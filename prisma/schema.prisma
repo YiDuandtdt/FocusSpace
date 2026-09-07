@@ -1,0 +1,100 @@
+generator client {
+  provider = "prisma-client-js"
+}
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+enum Role {
+  USER
+  ADMIN
+}
+enum Phase {
+  LOBBY
+  FOCUS
+  BREAK
+  ENDED
+}
+enum ConnectionState {
+  CONNECTED
+  DISCONNECTED
+}
+model User {
+  id           String @id @default(cuid())
+  username     String @unique
+  passwordHash String
+  nickname     String
+  avatarId     String @default("lake")
+  role         Role @default(USER)
+  createdAt    DateTime @default(now())
+  authSessions AuthSession[]
+  ownedRooms   Room[]
+  memberships  RoomMember[]
+  receipts     CommandReceipt[]
+}
+model AuthSession {
+  id        String @id @default(cuid())
+  tokenHash String @unique
+  userId    String
+  user      User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime @default(now())
+  @@index([userId])
+}
+model Room {
+  id        String @id @default(cuid())
+  code      String @unique
+  name      String
+  ownerId   String
+  owner     User @relation(fields: [ownerId], references: [id])
+  sessionId String @unique
+  session   StudySession @relation(fields: [sessionId], references: [id])
+  capacity  Int @default(8)
+  revision  Int @default(1)
+  createdAt DateTime @default(now())
+  members   RoomMember[]
+}
+model StudySession {
+  id           String @id @default(cuid())
+  phase        Phase @default(LOBBY)
+  roundNo      Int @default(0)
+  focusSeconds Int
+  breakSeconds Int
+  phaseStartAt DateTime?
+  phaseEndAt   DateTime?
+  startedAt    DateTime?
+  endedAt      DateTime?
+  endReason    String?
+  createdAt    DateTime @default(now())
+  room         Room?
+}
+model RoomMember {
+  id              String @id @default(cuid())
+  roomId          String
+  room            Room @relation(fields: [roomId], references: [id])
+  userId          String
+  user            User @relation(fields: [userId], references: [id])
+  seatIndex       Int
+  ready           Boolean @default(false)
+  afk             Boolean @default(false)
+  connectionState ConnectionState @default(DISCONNECTED)
+  joinedAt        DateTime @default(now())
+  leftAt          DateTime?
+  lastSeenAt      DateTime @default(now())
+  @@unique([roomId, userId])
+  @@index([userId, leftAt])
+  @@index([roomId, leftAt])
+}
+model CommandReceipt {
+  id          String @id @default(cuid())
+  userId      String
+  user        User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  requestId   String
+  commandType String
+  payloadHash String
+  result      String
+  createdAt   DateTime @default(now())
+  @@unique([userId, requestId])
+  @@index([createdAt])
+}

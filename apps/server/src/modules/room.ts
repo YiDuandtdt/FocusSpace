@@ -1,0 +1,253 @@
+import { randomInt } from 'node:crypto';
+import { Prisma } from '@prisma/client';
+import { ROOM_CAPACITY, type RoomSnapshot, type Member } from '@focusspace/shared';
+import { db } from '../db.js';
+import { AppError } from '../errors.js';
+import { digest } from './auth.js';
+
+type Tx = Prisma.TransactionClient;
+const include = {
+  session: true,
+  members: { include: { user: true }, orderBy: { seatIndex: 'asc' as const } },
+};
+export async function currentRoom(userId: string, tx: Tx = db) {
+  const member = await tx.roomMember.findFirst({
+    where: { userId, leftAt: null, room: { session: { phase: { not: 'ENDED' } } } },
+    select: { roomId: true },
+  });
+  return member?.roomId ?? null;
+}
+export async function receipt<T>(
+  tx: Tx,
+  userId: string,
+  requestId: string,
+  commandType: string,
+  payload: unknown,
+  work: () => Promise<T>,
+): Promise<T> {
+  const payloadHash = digest(JSON.stringify(payload));
+  const old = await tx.commandReceipt.findUnique({
+    where: { userId_requestId: { userId, requestId } },
+  });
+  if (old) {
+    if (old.commandType !== commandType || old.payloadHash !== payloadHash)
+      throw new AppError('CONFLICT', '此请求标识已用于不同操作，请重新操作', 409);
+    return JSON.parse(old.result) as T;
+  }
+  const result = await work();
+  await tx.commandReceipt.create({
+    data: { userId, requestId, commandType, payloadHash, result: JSON.stringify(result) },
+  });
+  return result;
+}
+export async function createRoom(
+  userId: string,
+  input: { requestId: string; name: string; focusSeconds: number; breakSeconds: number },
+) {
+  return db.$transaction((tx) =>
+    receipt(tx, userId, input.requestId, 'room:create', input, async () => {
+      if (await currentRoom(userId, tx))
+        throw new AppError('ALREADY_IN_ROOM', '请先返回当前房间并离开，再创建新房间', 409);
+      const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+      let code: string;
+      do {
+        code = Array.from({ length: 6 }, () => alphabet[randomInt(alphabet.length)]).join('');
+      } while (await tx.room.findUnique({ where: { code } }));
+      const room = await tx.room.create({
+        data: {
+          name: input.name,
+          code,
+          owner: { connect: { id: userId } },
+          capacity: ROOM_CAPACITY,
+          session: {
+            create: { focusSeconds: input.focusSeconds, breakSeconds: input.breakSeconds },
+          },
+          members: { create: { userId, seatIndex: 0 } },
+        },
+      });
+      return { roomId: room.id, code: room.code, sessionId: room.sessionId };
+    }),
+  );
+}
+export async function joinRoom(userId: string, input: { requestId: string; code: string }) {
+  return db.$transaction((tx) =>
+    receipt(tx, userId, input.requestId, 'room:membership', input, async () => {
+      const room = await tx.room.findUnique({ where: { code: input.code }, include });
+      if (!room) throw new AppError('ROOM_NOT_FOUND', '没有找到这个房间，请检查房间码', 404);
+      if (room.session.phase === 'ENDED')
+        throw new AppError('ROOM_ENDED', '这个房间已结束，请向朋友获取新的房间码', 409);
+      const active = await currentRoom(userId, tx);
+      if (active && active !== room.id)
+        throw new AppError('ALREADY_IN_ROOM', '你已在另一个房间，请先返回并离开', 409);
+      const existing = room.members.find((m) => m.userId === userId && !m.leftAt);
+      if (!existing) {
+        const occupied = new Set(room.members.filter((m) => !m.leftAt).map((m) => m.seatIndex));
+        if (occupied.size >= room.capacity)
+          throw new AppError('ROOM_FULL', '房间已满，最多容纳 8 人', 409);
+        const seatIndex = Array.from({ length: room.capacity }, (_, i) => i).find(
+          (i) => !occupied.has(i),
+        )!;
+        await tx.roomMember.upsert({
+          where: { roomId_userId: { roomId: room.id, userId } },
+          create: { roomId: room.id, userId, seatIndex },
+          update: {
+            seatIndex,
+            ready: false,
+            afk: false,
+            leftAt: null,
+            joinedAt: new Date(),
+            lastSeenAt: new Date(),
+            connectionState: 'DISCONNECTED',
+          },
+        });
+        await bump(tx, room.id);
+      }
+      return { roomId: room.id, code: room.code, sessionId: room.sessionId };
+    }),
+  );
+}
+export async function requireMember(
+  roomId: string,
+  userId: string,
+  tx: Tx = db,
+  allowHistory = false,
+) {
+  const room = await tx.room.findUnique({ where: { id: roomId }, include });
+  const member = room?.members.find((m) => m.userId === userId);
+  if (!room || !member || (member.leftAt && !(allowHistory && room.session.phase === 'ENDED')))
+    throw new AppError('ROOM_NOT_FOUND', '房间不存在，或你已离开该房间', 404);
+  return { room, member };
+}
+export const bump = (tx: Tx, roomId: string) =>
+  tx.room.update({ where: { id: roomId }, data: { revision: { increment: 1 } } });
+export async function snapshot(roomId: string, userId: string): Promise<RoomSnapshot> {
+  const { room, member } = await requireMember(roomId, userId, db, true);
+  const ended = room.session.phase === 'ENDED';
+  return {
+    room: {
+      id: room.id,
+      name: room.name,
+      code: room.code,
+      ownerId: room.ownerId,
+      capacity: room.capacity,
+    },
+    session: {
+      id: room.sessionId,
+      phase: room.session.phase,
+      roundNo: room.session.roundNo,
+      focusSeconds: room.session.focusSeconds,
+      breakSeconds: room.session.breakSeconds,
+      phaseStartAt: room.session.phaseStartAt?.getTime() ?? null,
+      phaseEndAt: room.session.phaseEndAt?.getTime() ?? null,
+      endedAt: room.session.endedAt?.getTime() ?? null,
+      endReason: room.session.endReason,
+    },
+    members: room.members
+      .filter((m) => !m.leftAt)
+      .map(
+        (m): Member => ({
+          userId: m.userId,
+          nickname: m.user.nickname,
+          avatarId: m.user.avatarId as Member['avatarId'],
+          seatIndex: m.seatIndex,
+          ready: m.ready,
+          afk: m.afk,
+          connectionState: m.connectionState,
+          status:
+            m.connectionState === 'DISCONNECTED'
+              ? 'DISCONNECTED'
+              : m.afk
+                ? 'AFK'
+                : m.ready
+                  ? 'READY'
+                  : 'JOINED',
+          isOwner: m.userId === room.ownerId,
+          joinedAt: m.joinedAt.getTime(),
+          tasksDone: 0,
+          tasksTotal: 0,
+          progressPercent: null,
+        }),
+      ),
+    myTasks: [],
+    myPermissions: {
+      isOwner: room.ownerId === userId,
+      canParticipate: !ended && !member.leftAt,
+      canConfigure: room.ownerId === userId && room.session.phase === 'LOBBY' && !member.leftAt,
+    },
+    revision: room.revision,
+    serverTime: Date.now(),
+  };
+}
+export async function setConnected(roomId: string, userId: string, connected: boolean) {
+  await db.$transaction(async (tx) => {
+    const { room, member } = await requireMember(roomId, userId, tx, true);
+    if (room.session.phase === 'ENDED' || member.leftAt) return;
+    const state = connected ? 'CONNECTED' : 'DISCONNECTED';
+    if (member.connectionState === state) return;
+    await tx.roomMember.update({
+      where: { id: member.id },
+      data: { connectionState: state, lastSeenAt: new Date() },
+    });
+    await bump(tx, roomId);
+  });
+}
+export async function leaveMember(tx: Tx, roomId: string, userId: string, reason: string) {
+  const { room, member } = await requireMember(roomId, userId, tx);
+  if (room.session.phase === 'ENDED') return;
+  if (room.ownerId === userId) {
+    await tx.studySession.update({
+      where: { id: room.sessionId },
+      data: { phase: 'ENDED', endedAt: new Date(), endReason: reason, phaseEndAt: null },
+    });
+    await tx.roomMember.updateMany({
+      where: { roomId, leftAt: null },
+      data: { connectionState: 'DISCONNECTED', ready: false },
+    });
+  } else {
+    await tx.roomMember.update({
+      where: { id: member.id },
+      data: { leftAt: new Date(), ready: false, connectionState: 'DISCONNECTED' },
+    });
+  }
+  await bump(tx, roomId);
+}
+export async function mutateMember(
+  userId: string,
+  roomId: string,
+  requestId: string,
+  type: string,
+  payload: { ready?: boolean; afk?: boolean; focusSeconds?: number; breakSeconds?: number },
+) {
+  return db.$transaction((tx) =>
+    receipt(tx, userId, requestId, type, { roomId, payload }, async () => {
+      const { room, member } = await requireMember(roomId, userId, tx);
+      if (room.session.phase === 'ENDED') throw new AppError('ROOM_ENDED', '房间已经结束', 409);
+      if (type === 'member:leave') {
+        await leaveMember(tx, roomId, userId, 'OWNER_LEFT');
+        return { roomId };
+      }
+      if (member.connectionState !== 'CONNECTED')
+        throw new AppError('CONFLICT', '请等待实时连接恢复', 409);
+      if (type === 'room:configure') {
+        if (room.ownerId !== userId)
+          throw new AppError('FORBIDDEN', '只有房主可以修改学习节奏', 403);
+        if (room.session.phase !== 'LOBBY')
+          throw new AppError('INVALID_PHASE', '只能在大厅修改节奏', 409);
+        await tx.studySession.update({
+          where: { id: room.sessionId },
+          data: { focusSeconds: payload.focusSeconds, breakSeconds: payload.breakSeconds },
+        });
+        await tx.roomMember.updateMany({ where: { roomId, leftAt: null }, data: { ready: false } });
+      } else {
+        if (type === 'member:ready' && room.session.phase !== 'LOBBY')
+          throw new AppError('INVALID_PHASE', '只能在大厅设置准备状态', 409);
+        await tx.roomMember.update({
+          where: { id: member.id },
+          data: type === 'member:ready' ? { ready: payload.ready } : { afk: payload.afk },
+        });
+      }
+      await bump(tx, roomId);
+      return { roomId };
+    }),
+  );
+}
