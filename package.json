@@ -19,7 +19,9 @@
     "db:migrate": "prisma migrate dev",
     "db:studio": "prisma studio",
     "test:flow": "tsx scripts/verify-flow.ts",
-    "test:session": "tsx scripts/verify-session.ts"
+    "test:session": "tsx scripts/verify-session.ts",
+    "test:space": "tsx scripts/verify-space.ts",
+    "audio:generate": "node scripts/generate-ambience.mjs"
   },
   "devDependencies": {
     "@playwright/test": "1.55.0",

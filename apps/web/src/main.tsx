@@ -8,6 +8,7 @@ import { HomePage } from './pages/HomePage';
 import { RoomPage } from './pages/RoomPage';
 import { SummaryPage } from './pages/SummaryPage';
 import './styles.css';
+import './features/space/space.css';
 
 function Protected({ children }: { children: ReactNode }) {
   const { user } = useAuth();

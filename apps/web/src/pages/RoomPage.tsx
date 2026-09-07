@@ -1,21 +1,15 @@
 import { useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import type { Member, RoomCommand, RoomSnapshot } from '@focusspace/shared';
+import type { RoomCommand, RoomSnapshot } from '@focusspace/shared';
 import { useAuth } from '../auth';
 import { errorMessage } from '../api';
 import { Avatar, Notice, RhythmFields } from '../components';
 import { useRoom } from '../state/useRoom';
 import { PhaseTimer, TaskPanel, ChatPanel, SummaryPanel } from '../features/SessionPanels';
+import { StudySpace } from '../features/space/StudySpace';
+import { AmbientAudio } from '../features/audio/AmbientAudio';
+import { memberLabels as stateLabels } from '../features/space/memberPresentation';
 
-const stateLabels = {
-  JOINED: '已入座',
-  READY: '已准备',
-  AFK: '暂时离开',
-  DISCONNECTED: '等待重连',
-  FOCUSING: '正在专注',
-  BREAKING: '正在休息',
-  ENDED: '已结束',
-};
 export function RoomPage() {
   const { roomId = '' } = useParams();
   const { user, refresh } = useAuth();
@@ -132,19 +126,14 @@ export function RoomPage() {
       </div>
       {actionError ? <Notice>{actionError}</Notice> : null}
       {data.summary ? <SummaryPanel summary={data.summary} /> : null}
-      {!lobby && !ended ? (
-        <PhaseTimer
-          key={`${roomId}-${data.session.phaseEndAt}`}
-          session={data.session}
-          serverNow={serverNow}
-          syncNow={syncNow}
-        />
-      ) : null}
+      <nav className="room-shortcuts" aria-label="房间快捷入口">
+        <a href="#room-space">空间与计时</a>
+        <a href="#room-tasks">我的任务</a>
+        <a href="#room-chat">{data.session.phase === 'BREAK' ? '聊天 · 已开放' : '休息聊天'}</a>
+      </nav>
       <div className="room-grid">
         <div className="room-main">
-          <TaskPanel tasks={data.myTasks} disabled={!writable} ended={ended} command={command} />
-          <ChatPanel data={data} messages={messages} disabled={!writable} command={command} />
-          <section className="space-panel">
+          <section className="space-panel" id="room-space">
             <div className="space-top">
               <span>
                 <i className="status-dot" />
@@ -154,48 +143,21 @@ export function RoomPage() {
                 {online} 人在线 / {data.room.capacity} 个座位
               </span>
             </div>
-            <div className="seating-room">
-              <div className="room-window" aria-hidden="true">
-                <span />
-                <span />
-                <span />
-              </div>
-              <div className="seats seats-top">
-                {[0, 1, 2, 3].map((i) => (
-                  <Seat
-                    key={i}
-                    index={i}
-                    member={data.members.find((m) => m.seatIndex === i)}
-                    userId={user?.id}
-                  />
-                ))}
-              </div>
-              <div className="study-table">
-                <span className="table-book" aria-hidden="true" />
-                <div>
-                  <span className="eyebrow">SHARED SPACE</span>
-                  <strong>各自学习，一起专注</strong>
-                  <span>给今天的目标，留一个位置。</span>
-                </div>
-                <span className="table-plant" aria-hidden="true">
-                  ✳
-                </span>
-              </div>
-              <div className="seats seats-bottom">
-                {[4, 5, 6, 7].map((i) => (
-                  <Seat
-                    key={i}
-                    index={i}
-                    member={data.members.find((m) => m.seatIndex === i)}
-                    userId={user?.id}
-                  />
-                ))}
-              </div>
-            </div>
-            <div className="space-caption">
-              <span>房间仅通过房间码加入</span>
-              <span>成员变化实时同步</span>
-            </div>
+            {!lobby && !ended ? (
+              <PhaseTimer
+                key={`${roomId}-${data.session.phaseEndAt}`}
+                session={data.session}
+                serverNow={serverNow}
+                syncNow={syncNow}
+              />
+            ) : null}
+            <StudySpace
+              key={roomId}
+              members={data.members}
+              phase={data.session.phase}
+              userId={user?.id}
+            />
+            {!ended ? <AmbientAudio key={`audio-${roomId}`} /> : null}
             <div className="lobby-controls">
               <div>
                 <strong>
@@ -246,6 +208,12 @@ export function RoomPage() {
           </section>
         </div>
         <aside className="room-sidebar">
+          <div id="room-tasks">
+            <TaskPanel tasks={data.myTasks} disabled={!writable} ended={ended} command={command} />
+          </div>
+          <div id="room-chat">
+            <ChatPanel data={data} messages={messages} disabled={!writable} command={command} />
+          </div>
           <section className="panel members-panel">
             <div className="panel-heading">
               <h2>一起学习的人</h2>
@@ -341,32 +309,6 @@ export function RoomPage() {
           </div>
         </dialog>
       ) : null}
-    </div>
-  );
-}
-function Seat({ index, member, userId }: { index: number; member?: Member; userId?: string }) {
-  return (
-    <div
-      className={`seat ${member ? 'occupied' : 'vacant'} ${member?.status === 'DISCONNECTED' || member?.afk ? 'away' : ''}`}
-    >
-      <div className="seat-shape">
-        {member ? (
-          <Avatar nickname={member.nickname} avatarId={member.avatarId} />
-        ) : (
-          <span aria-hidden="true">＋</span>
-        )}
-        {member?.status === 'READY' ? (
-          <span className="seat-ready" aria-label="已准备">
-            ✓
-          </span>
-        ) : null}
-      </div>
-      <strong>
-        {member ? `${member.nickname}${member.userId === userId ? ' · 你' : ''}` : '等你入座'}
-      </strong>
-      <small>
-        {member ? stateLabels[member.status] : `SEAT ${String(index + 1).padStart(2, '0')}`}
-      </small>
     </div>
   );
 }
