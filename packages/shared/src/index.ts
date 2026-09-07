@@ -24,6 +24,22 @@ export const rhythmSchema = z.object({
   focusSeconds: z.number().int().min(60).max(10800),
   breakSeconds: z.number().int().min(60).max(3600),
 });
+export const demoRhythmSchema = z.object({
+  focusSeconds: z.literal(45),
+  breakSeconds: z.literal(15),
+});
+export const taskCreateSchema = z
+  .object({ title: z.string().trim().min(1, '请输入任务标题').max(200, '任务标题最多 200 字') })
+  .strict();
+export const taskDeleteSchema = z
+  .object({ taskId: z.string().min(1).max(100), version: z.number().int().positive() })
+  .strict();
+export const taskUpdateSchema = taskDeleteSchema
+  .extend({ title: taskCreateSchema.shape.title.optional(), completed: z.boolean().optional() })
+  .refine((v) => v.title !== undefined || v.completed !== undefined, '请提供修改内容');
+export const chatSendSchema = z
+  .object({ content: z.string().trim().min(1, '请输入消息').max(500, '消息最多 500 字') })
+  .strict();
 export const requestIdSchema = z.string().uuid('请求标识无效');
 export const createRoomSchema = rhythmSchema.extend({
   name: z.string().trim().min(1, '请输入房间名称').max(40, '房间名最多 40 字'),
@@ -58,9 +74,10 @@ export type Member = {
   ready: boolean;
   afk: boolean;
   connectionState: 'CONNECTED' | 'DISCONNECTED';
-  status: 'JOINED' | 'READY' | 'AFK' | 'DISCONNECTED';
+  status: 'JOINED' | 'READY' | 'AFK' | 'DISCONNECTED' | 'FOCUSING' | 'BREAKING' | 'ENDED';
   isOwner: boolean;
   joinedAt: number;
+  lateJoin: boolean;
   tasksDone: number;
   tasksTotal: number;
   progressPercent: number | null;
@@ -77,10 +94,19 @@ export type RoomSnapshot = {
     phaseEndAt: number | null;
     endedAt: number | null;
     endReason: string | null;
+    demoMode: boolean;
   };
   members: Member[];
-  myTasks: never[];
-  myPermissions: { isOwner: boolean; canParticipate: boolean; canConfigure: boolean };
+  myTasks: Task[];
+  myPermissions: {
+    isOwner: boolean;
+    canParticipate: boolean;
+    canConfigure: boolean;
+    canStart: boolean;
+    canChat: boolean;
+  };
+  demoAvailable: boolean;
+  summary: SessionSummary | null;
   revision: number;
   serverTime: number;
 };
@@ -107,4 +133,51 @@ export type RoomCommand =
   | 'room:configure'
   | 'member:ready'
   | 'member:afk'
-  | 'member:leave';
+  | 'member:leave'
+  | 'session:start'
+  | 'session:end'
+  | 'task:create'
+  | 'task:update'
+  | 'task:delete'
+  | 'chat:send';
+
+export type Task = {
+  id: string;
+  title: string;
+  completed: boolean;
+  completedAt: number | null;
+  version: number;
+};
+export type ChatMessage = {
+  id: string;
+  userId: string;
+  nickname: string;
+  content: string;
+  createdAt: number;
+};
+export type ChatEvent = {
+  eventId: string;
+  roomId: string;
+  sessionId: string;
+  revision: number;
+  serverTime: number;
+  type: 'chat:message';
+  data: ChatMessage;
+};
+export type SessionSummary = {
+  sessionId: string;
+  roomId: string;
+  roomName: string;
+  startedAt: number | null;
+  endedAt: number;
+  endReason: string | null;
+  roomRoundsCompleted: number;
+  record: {
+    focusSeconds: number;
+    roundsCompleted: number;
+    tasksDone: number;
+    tasksTotal: number;
+    progressPercent: number | null;
+    studiedWith: number;
+  };
+};

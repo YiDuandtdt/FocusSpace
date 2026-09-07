@@ -18,7 +18,8 @@
     "start": "node --env-file=.env apps/server/dist/index.js",
     "db:migrate": "prisma migrate dev",
     "db:studio": "prisma studio",
-    "test:flow": "tsx scripts/verify-flow.ts"
+    "test:flow": "tsx scripts/verify-flow.ts",
+    "test:session": "tsx scripts/verify-session.ts"
   },
   "devDependencies": {
     "@playwright/test": "1.55.0",

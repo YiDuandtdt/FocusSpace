@@ -15,20 +15,21 @@ import { db, serialize } from './db.js';
 import { config } from './config.js';
 import { AppError, publicError } from './errors.js';
 import { authenticate, login, register, publicUser, sessionCookie } from './modules/auth.js';
-import { bump, createRoom, currentRoom, joinRoom, snapshot } from './modules/room.js';
+import {
+  bump,
+  createRoom,
+  currentRoom,
+  joinRoom,
+  snapshot,
+  requireMember,
+} from './modules/room.js';
 import { createRealtime } from './realtime/index.js';
+import { advanceRoom, recoverSessions } from './modules/session.js';
+import { summary } from './modules/record.js';
 
 await db.$connect();
 await db.$queryRaw`PRAGMA journal_mode=WAL`;
-// Reconfirm online identities after restart; nobody receives stale online status.
-await db.$transaction(async (tx) => {
-  const rooms = await tx.room.findMany({ where: { session: { phase: { not: 'ENDED' } } } });
-  await tx.roomMember.updateMany({
-    where: { leftAt: null, room: { session: { phase: { not: 'ENDED' } } } },
-    data: { connectionState: 'DISCONNECTED', lastSeenAt: new Date() },
-  });
-  for (const room of rooms) await bump(tx, room.id);
-});
+await recoverSessions();
 const app = express();
 app.disable('x-powered-by');
 const server = createServer(app);
@@ -146,7 +147,17 @@ app.post('/api/rooms/join', async (req, res) => {
 app.get('/api/rooms/:id/snapshot', async (req, res) => {
   const result = await serialize(async () => {
     const auth = await authenticate(req.headers.cookie);
+    await requireMember(req.params.id as string, auth.userId, db, true);
+    if (await advanceRoom(req.params.id as string))
+      await realtime.broadcast(req.params.id as string, 'phase:change');
     return snapshot(req.params.id as string, auth.userId);
+  });
+  res.json(result);
+});
+app.get('/api/sessions/:id/summary', async (req, res) => {
+  const result = await serialize(async () => {
+    const auth = await authenticate(req.headers.cookie);
+    return summary(req.params.id as string, auth.userId);
   });
   res.json(result);
 });

@@ -409,8 +409,8 @@ try {
   await second.getByLabel('房间码', { exact: true }).fill(code);
   await second.getByRole('button', { name: '加入房间', exact: true }).click();
   await expect(first.locator('.member-list li')).toHaveCount(2);
-  await first.getByRole('button', { name: '结束并离开房间', exact: true }).click();
-  await first.getByRole('button', { name: '确认离开', exact: true }).click();
+  await first.getByRole('button', { name: '结束共学', exact: true }).click();
+  await first.getByRole('button', { name: '确认结束', exact: true }).click();
   await expect(second.getByText('这次相聚先到这里')).toBeVisible();
   await first.getByRole('button', { name: '退出登录', exact: true }).click();
   await first.goto(browserRoomUrl);

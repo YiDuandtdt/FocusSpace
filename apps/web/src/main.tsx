@@ -6,6 +6,7 @@ import { Shell, Notice } from './components';
 import { AuthPage } from './pages/AuthPage';
 import { HomePage } from './pages/HomePage';
 import { RoomPage } from './pages/RoomPage';
+import { SummaryPage } from './pages/SummaryPage';
 import './styles.css';
 
 function Protected({ children }: { children: ReactNode }) {
@@ -34,6 +35,14 @@ function App() {
         </section>
       ) : (
         <Routes>
+          <Route
+            path="/sessions/:sessionId/summary"
+            element={
+              <Protected>
+                <SummaryPage />
+              </Protected>
+            }
+          />
           <Route path="/login" element={<AuthPage key="login" />} />
           <Route path="/register" element={<AuthPage key="register" register />} />
           <Route

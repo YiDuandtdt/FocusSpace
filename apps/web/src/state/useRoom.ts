@@ -1,6 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { io, type Socket } from 'socket.io-client';
-import type { Ack, RoomCommand, RoomEvent, RoomSnapshot } from '@focusspace/shared';
+import type {
+  Ack,
+  RoomCommand,
+  RoomEvent,
+  RoomSnapshot,
+  ChatEvent,
+  ChatMessage,
+} from '@focusspace/shared';
 import { api, errorMessage, RequestError } from '../api';
 
 export function useRoom(roomId: string) {
@@ -8,6 +15,18 @@ export function useRoom(roomId: string) {
   const [status, setStatus] = useState<'connecting' | 'online' | 'offline'>('connecting');
   const [error, setError] = useState('');
   const [removed, setRemoved] = useState(false);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const clock = useRef({ serverAt: Date.now(), localAt: performance.now() });
+  const calibrate = useCallback((serverTime: number, sentAt: number) => {
+    const receivedAt = performance.now();
+    clock.current = { serverAt: serverTime + (receivedAt - sentAt) / 2, localAt: receivedAt };
+  }, []);
+  const serverNow = useCallback(
+    () => clock.current.serverAt + performance.now() - clock.current.localAt,
+    [],
+  );
+  const syncRef = useRef<() => void>(() => undefined);
+  const syncNow = useCallback(() => syncRef.current(), []);
   const socketRef = useRef<Socket | null>(null);
   const accept = useCallback(
     (incoming: RoomSnapshot) =>
@@ -24,6 +43,7 @@ export function useRoom(roomId: string) {
     setError('');
     setRemoved(false);
     setStatus('connecting');
+    setMessages([]);
     const socket = io({
       autoConnect: false,
       withCredentials: true,
@@ -43,6 +63,7 @@ export function useRoom(roomId: string) {
     };
     function sync(type: 'room:join' | 'room:sync' = 'room:sync') {
       if (!alive || !socket.connected) return;
+      const sentAt = performance.now();
       socket
         .timeout(8000)
         .emit(
@@ -61,12 +82,16 @@ export function useRoom(roomId: string) {
               else removed(ack.error);
               return;
             }
-            if (ack.data) accept(ack.data);
+            if (ack.data) {
+              calibrate(ack.data.serverTime, sentAt);
+              accept(ack.data);
+            }
             setStatus('online');
             setError('');
           },
         );
     }
+    syncRef.current = sync;
     socket.on('connect', () => sync('room:join'));
     socket.on('disconnect', () => {
       if (alive) setStatus('offline');
@@ -80,12 +105,20 @@ export function useRoom(roomId: string) {
     socket.on('room:snapshot', (event: RoomEvent) => {
       if (alive && event.roomId === roomId) accept(event.data);
     });
+    const seen = new Set<string>();
+    socket.on('chat:message', (event: ChatEvent) => {
+      if (!alive || event.roomId !== roomId || seen.has(event.eventId)) return;
+      seen.add(event.eventId);
+      setMessages((old) => [...old, event.data].slice(-100));
+    });
     socket.on('auth:expired', expire);
     socket.on('room:removed', removed);
     // Read persisted membership first. Opening a URL never grants a seat.
+    const sentAt = performance.now();
     void api<RoomSnapshot>(`/rooms/${roomId}/snapshot`)
       .then((snapshot) => {
         if (!alive) return;
+        calibrate(snapshot.serverTime, sentAt);
         accept(snapshot);
         socket.connect();
       })
@@ -108,8 +141,9 @@ export function useRoom(roomId: string) {
       socket.removeAllListeners();
       socket.disconnect();
       socketRef.current = null;
+      syncRef.current = () => undefined;
     };
-  }, [roomId, accept]);
+  }, [roomId, accept, calibrate]);
   const command = async (type: RoomCommand, payload: unknown = {}) => {
     const socket = socketRef.current;
     if (!socket?.connected || status !== 'online') throw new Error('连接尚未恢复，请稍后操作');
@@ -129,14 +163,19 @@ export function useRoom(roomId: string) {
       // Confirm committed state, then retry the same idempotency key once.
       const fresh = await api<RoomSnapshot>(`/rooms/${roomId}/snapshot`).catch(() => null);
       if (fresh) accept(fresh);
+      if (type === 'chat:send')
+        throw new Error('消息确认超时，请检查聊天区；草稿已保留，不会自动补发');
       try {
         ack = await send();
       } catch {
         throw new Error('操作确认超时，状态已尝试同步，请检查当前结果后重试');
       }
     }
-    if (!ack.ok) throw new Error(ack.error?.message ?? '操作未完成');
+    if (!ack.ok) {
+      syncNow();
+      throw new Error(ack.error?.message ?? '操作未完成');
+    }
     if (ack.data) accept(ack.data);
   };
-  return { data, status, error, removed, command };
+  return { data, status, error, removed, command, messages, serverNow, syncNow };
 }

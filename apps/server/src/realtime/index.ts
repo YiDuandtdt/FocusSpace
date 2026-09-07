@@ -5,9 +5,12 @@ import { z } from 'zod';
 import {
   commandSchema,
   rhythmSchema,
+  demoRhythmSchema,
   type Ack,
   type RoomCommand,
   type RoomEvent,
+  type ChatMessage,
+  type ChatEvent,
 } from '@focusspace/shared';
 import { db, serialize } from '../db.js';
 import { config } from '../config.js';
@@ -20,6 +23,9 @@ import {
   setConnected,
   snapshot,
 } from '../modules/room.js';
+import { advanceRoom, sessionCommand } from '../modules/session.js';
+import { taskCommand } from '../modules/task.js';
+import { sendChat } from '../modules/chat.js';
 
 export function createRealtime(server: HttpServer) {
   const io = new Server(server, {
@@ -38,18 +44,18 @@ export function createRealtime(server: HttpServer) {
       done(null, !!origin && config.origins.has(origin));
     },
     maxHttpBufferSize: 16384,
-    pingInterval: 10000,
+    pingInterval: 15000,
     pingTimeout: 10000,
   });
   const subscriptions = new Map<
     string,
-    { socket: Socket; userId: string; roomId: string; authId: string }
+    { socket: Socket; userId: string; roomId: string; authId: string; lastSeenAt: number }
   >();
   const hasConnection = (roomId: string, userId: string) =>
     [...subscriptions.values()].some(
       (s) => s.roomId === roomId && s.userId === userId && s.socket.connected,
     );
-  async function broadcast(roomId: string, type = 'member:updated') {
+  async function broadcast(roomId: string, type = 'member:updated', message?: ChatMessage) {
     let presenceChanged = false;
     for (const entry of [...subscriptions.values()].filter((s) => s.roomId === roomId)) {
       try {
@@ -65,6 +71,15 @@ export function createRealtime(server: HttpServer) {
           data,
         };
         entry.socket.emit('room:snapshot', event);
+        if (message && data.myPermissions.canParticipate) {
+          const chat: ChatEvent = {
+            ...event,
+            eventId: message.id,
+            type: 'chat:message',
+            data: message,
+          };
+          entry.socket.emit('chat:message', chat);
+        }
       } catch (error) {
         const detail = publicError(error);
         entry.socket.emit(detail.code === 'UNAUTHORIZED' ? 'auth:expired' : 'room:removed', detail);
@@ -91,6 +106,28 @@ export function createRealtime(server: HttpServer) {
     }
   });
   io.on('connection', (socket) => {
+    socket.conn.on('packet', (packet) => {
+      if (packet.type === 'pong') {
+        const entry = subscriptions.get(socket.id);
+        if (entry) {
+          entry.lastSeenAt = Date.now();
+          const at = new Date(entry.lastSeenAt);
+          void serialize(async () => {
+            await db.roomMember.updateMany({
+              where: {
+                roomId: entry.roomId,
+                userId: entry.userId,
+                leftAt: null,
+                connectionState: 'CONNECTED',
+                lastSeenAt: { lt: at },
+                room: { session: { phase: { not: 'ENDED' } } },
+              },
+              data: { lastSeenAt: at },
+            });
+          }).catch(console.error);
+        }
+      }
+    });
     let windowStart = Date.now();
     let commandCount = 0;
     const commands: RoomCommand[] = [
@@ -100,6 +137,12 @@ export function createRealtime(server: HttpServer) {
       'member:afk',
       'member:leave',
       'room:configure',
+      'session:start',
+      'session:end',
+      'task:create',
+      'task:update',
+      'task:delete',
+      'chat:send',
     ];
     for (const type of commands)
       socket.on(type, (raw: unknown, respond?: (result: Ack) => void) => {
@@ -117,6 +160,14 @@ export function createRealtime(server: HttpServer) {
             const input = commandSchema.parse(raw);
             requestId = input.requestId;
             if (!socket.connected) return;
+            const entry = subscriptions.get(socket.id);
+            if (entry) entry.lastSeenAt = Date.now();
+            await requireMember(input.roomId, auth.userId, db, true).catch((error) => {
+              // Leave retries remain valid after the member has left.
+              if (type !== 'member:leave') throw error;
+            });
+            if (await advanceRoom(input.roomId)) await broadcast(input.roomId, 'phase:change');
+            let message: ChatMessage | undefined;
             if (type === 'room:join' || type === 'room:sync') {
               await requireMember(input.roomId, auth.userId, db, true);
               const previous = subscriptions.get(socket.id);
@@ -131,22 +182,35 @@ export function createRealtime(server: HttpServer) {
                 userId: auth.userId,
                 roomId: input.roomId,
                 authId: auth.id,
+                lastSeenAt: Date.now(),
               });
               await setConnected(input.roomId, auth.userId, true);
             } else {
               if (type !== 'member:leave' && subscriptions.get(socket.id)?.roomId !== input.roomId)
                 throw new AppError('FORBIDDEN', '请先连接房间', 403);
-              const payload =
-                type === 'member:ready'
-                  ? z.object({ ready: z.boolean() }).parse(input.payload)
-                  : type === 'member:afk'
-                    ? z.object({ afk: z.boolean() }).parse(input.payload)
-                    : type === 'room:configure'
-                      ? rhythmSchema.parse(input.payload)
-                      : z.object({}).strict().parse(input.payload);
-              await mutateMember(auth.userId, input.roomId, requestId, type, payload);
+              if (type === 'session:start' || type === 'session:end') {
+                z.object({}).strict().parse(input.payload);
+                await sessionCommand(auth.userId, input.roomId, requestId, type);
+              } else if (type.startsWith('task:')) {
+                await taskCommand(auth.userId, input.roomId, requestId, type, input.payload);
+              } else if (type === 'chat:send') {
+                message = await sendChat(auth.userId, input.roomId, requestId, input.payload);
+              } else {
+                const payload =
+                  type === 'member:ready'
+                    ? z.object({ ready: z.boolean() }).parse(input.payload)
+                    : type === 'member:afk'
+                      ? z.object({ afk: z.boolean() }).parse(input.payload)
+                      : type === 'room:configure'
+                        ? (config.DEMO_MODE === 'true'
+                            ? z.union([rhythmSchema, demoRhythmSchema])
+                            : rhythmSchema
+                          ).parse(input.payload)
+                        : z.object({}).strict().parse(input.payload);
+                await mutateMember(auth.userId, input.roomId, requestId, type, payload);
+              }
             }
-            await broadcast(input.roomId, type);
+            await broadcast(input.roomId, type, message);
             const data =
               type === 'member:leave' ? undefined : await snapshot(input.roomId, auth.userId);
             respond({ requestId, ok: true, revision: data?.revision, data });
@@ -155,13 +219,20 @@ export function createRealtime(server: HttpServer) {
           }
         });
       });
-    socket.on('disconnect', () => {
+    socket.on('disconnect', (reason) => {
+      const detectedAt = new Date();
       void serialize(async () => {
         const entry = subscriptions.get(socket.id);
         subscriptions.delete(socket.id);
         if (entry && !hasConnection(entry.roomId, entry.userId)) {
           try {
-            await setConnected(entry.roomId, entry.userId, false);
+            await advanceRoom(entry.roomId);
+            await setConnected(
+              entry.roomId,
+              entry.userId,
+              false,
+              reason === 'ping timeout' ? new Date(entry.lastSeenAt) : detectedAt,
+            );
             await broadcast(entry.roomId);
           } catch (error) {
             if (!(error instanceof AppError)) console.error(error);
@@ -176,6 +247,11 @@ export function createRealtime(server: HttpServer) {
     sweeping = true;
     void serialize(async () => {
       const changed = new Set<string>();
+      const due = await db.room.findMany({
+        where: { session: { phase: { in: ['FOCUS', 'BREAK'] }, phaseEndAt: { lte: new Date() } } },
+      });
+      for (const room of due)
+        if (await advanceRoom(room.id)) await broadcast(room.id, 'phase:change');
       for (const entry of [...subscriptions.values()]) {
         try {
           await authenticate(entry.socket.request.headers.cookie);
@@ -194,6 +270,11 @@ export function createRealtime(server: HttpServer) {
       });
       for (const member of stale) {
         if (hasConnection(member.roomId, member.userId)) continue;
+        const current = await db.room.findUnique({
+          where: { id: member.roomId },
+          include: { session: true },
+        });
+        if (current?.session.phase === 'ENDED') continue;
         await db.$transaction((tx) =>
           leaveMember(tx, member.roomId, member.userId, 'OWNER_DISCONNECTED'),
         );
@@ -209,14 +290,21 @@ export function createRealtime(server: HttpServer) {
   const heartbeat = setInterval(() => {
     void serialize(async () => {
       const active = [...subscriptions.values()].filter((s) => s.socket.connected);
-      if (active.length)
+      const seen = new Map<string, (typeof active)[number]>();
+      for (const entry of active) {
+        const key = `${entry.roomId}:${entry.userId}`;
+        if (!seen.has(key) || seen.get(key)!.lastSeenAt < entry.lastSeenAt) seen.set(key, entry);
+      }
+      for (const entry of seen.values())
         await db.roomMember.updateMany({
           where: {
+            roomId: entry.roomId,
+            userId: entry.userId,
             leftAt: null,
             connectionState: 'CONNECTED',
-            OR: active.map((s) => ({ roomId: s.roomId, userId: s.userId })),
+            room: { session: { phase: { not: 'ENDED' } } },
           },
-          data: { lastSeenAt: new Date() },
+          data: { lastSeenAt: new Date(entry.lastSeenAt) },
         });
       await db.commandReceipt.deleteMany({
         where: { createdAt: { lt: new Date(Date.now() - 7 * 86400000) } },

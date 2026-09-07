@@ -4,6 +4,10 @@ import { ROOM_CAPACITY, type RoomSnapshot, type Member } from '@focusspace/share
 import { db } from '../db.js';
 import { AppError } from '../errors.js';
 import { digest } from './auth.js';
+import { config } from '../config.js';
+import { openPresence, closePresence } from './presence.js';
+import { finishSession } from './session.js';
+import { summary } from './record.js';
 
 type Tx = Prisma.TransactionClient;
 const include = {
@@ -123,6 +127,19 @@ export const bump = (tx: Tx, roomId: string) =>
 export async function snapshot(roomId: string, userId: string): Promise<RoomSnapshot> {
   const { room, member } = await requireMember(roomId, userId, db, true);
   const ended = room.session.phase === 'ENDED';
+  const [tasks, myTasks, result] = await Promise.all([
+    db.task.findMany({
+      where: { sessionId: room.sessionId },
+      select: { userId: true, completed: true },
+    }),
+    db.task.findMany({
+      where: { sessionId: room.sessionId, userId },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      select: { id: true, title: true, completed: true, completedAt: true, version: true },
+    }),
+    ended ? summary(room.sessionId, userId) : Promise.resolve(null),
+  ]);
+  const retained = room.members.filter((m) => !m.leftAt);
   return {
     room: {
       id: room.id,
@@ -141,6 +158,7 @@ export async function snapshot(roomId: string, userId: string): Promise<RoomSnap
       phaseEndAt: room.session.phaseEndAt?.getTime() ?? null,
       endedAt: room.session.endedAt?.getTime() ?? null,
       endReason: room.session.endReason,
+      demoMode: room.session.focusSeconds === 45 && room.session.breakSeconds === 15,
     },
     members: room.members
       .filter((m) => !m.leftAt)
@@ -153,32 +171,58 @@ export async function snapshot(roomId: string, userId: string): Promise<RoomSnap
           ready: m.ready,
           afk: m.afk,
           connectionState: m.connectionState,
-          status:
-            m.connectionState === 'DISCONNECTED'
+          status: ended
+            ? 'ENDED'
+            : m.connectionState === 'DISCONNECTED'
               ? 'DISCONNECTED'
               : m.afk
                 ? 'AFK'
-                : m.ready
-                  ? 'READY'
-                  : 'JOINED',
+                : room.session.phase === 'FOCUS'
+                  ? 'FOCUSING'
+                  : room.session.phase === 'BREAK'
+                    ? 'BREAKING'
+                    : m.ready
+                      ? 'READY'
+                      : 'JOINED',
           isOwner: m.userId === room.ownerId,
           joinedAt: m.joinedAt.getTime(),
-          tasksDone: 0,
-          tasksTotal: 0,
-          progressPercent: null,
+          lateJoin: !!room.session.startedAt && m.joinedAt > room.session.startedAt,
+          tasksDone: tasks.filter((t) => t.userId === m.userId && t.completed).length,
+          tasksTotal: tasks.filter((t) => t.userId === m.userId).length,
+          progressPercent: tasks.some((t) => t.userId === m.userId)
+            ? Math.round(
+                (tasks.filter((t) => t.userId === m.userId && t.completed).length /
+                  tasks.filter((t) => t.userId === m.userId).length) *
+                  100,
+              )
+            : null,
         }),
       ),
-    myTasks: [],
+    myTasks: myTasks.map((t) => ({ ...t, completedAt: t.completedAt?.getTime() ?? null })),
+    demoAvailable: config.DEMO_MODE === 'true',
+    summary: result,
     myPermissions: {
       isOwner: room.ownerId === userId,
       canParticipate: !ended && !member.leftAt,
       canConfigure: room.ownerId === userId && room.session.phase === 'LOBBY' && !member.leftAt,
+      canStart:
+        room.ownerId === userId &&
+        room.session.phase === 'LOBBY' &&
+        retained.length > 0 &&
+        retained.every((m) => m.ready && !m.afk && m.connectionState === 'CONNECTED'),
+      canChat:
+        !member.leftAt && member.connectionState === 'CONNECTED' && room.session.phase === 'BREAK',
     },
     revision: room.revision,
     serverTime: Date.now(),
   };
 }
-export async function setConnected(roomId: string, userId: string, connected: boolean) {
+export async function setConnected(
+  roomId: string,
+  userId: string,
+  connected: boolean,
+  at = new Date(),
+) {
   await db.$transaction(async (tx) => {
     const { room, member } = await requireMember(roomId, userId, tx, true);
     if (room.session.phase === 'ENDED' || member.leftAt) return;
@@ -186,8 +230,11 @@ export async function setConnected(roomId: string, userId: string, connected: bo
     if (member.connectionState === state) return;
     await tx.roomMember.update({
       where: { id: member.id },
-      data: { connectionState: state, lastSeenAt: new Date() },
+      data: { connectionState: state, lastSeenAt: at },
     });
+    if (!connected) await closePresence(tx, room.sessionId, userId, at, 'DISCONNECTED');
+    else if (!member.afk && room.session.phase !== 'LOBBY')
+      await openPresence(tx, room.sessionId, userId, at);
     await bump(tx, roomId);
   });
 }
@@ -195,15 +242,10 @@ export async function leaveMember(tx: Tx, roomId: string, userId: string, reason
   const { room, member } = await requireMember(roomId, userId, tx);
   if (room.session.phase === 'ENDED') return;
   if (room.ownerId === userId) {
-    await tx.studySession.update({
-      where: { id: room.sessionId },
-      data: { phase: 'ENDED', endedAt: new Date(), endReason: reason, phaseEndAt: null },
-    });
-    await tx.roomMember.updateMany({
-      where: { roomId, leftAt: null },
-      data: { connectionState: 'DISCONNECTED', ready: false },
-    });
+    await finishSession(tx, roomId, reason);
+    return;
   } else {
+    await closePresence(tx, room.sessionId, userId, new Date(), 'LEFT');
     await tx.roomMember.update({
       where: { id: member.id },
       data: { leftAt: new Date(), ready: false, connectionState: 'DISCONNECTED' },
@@ -245,6 +287,11 @@ export async function mutateMember(
           where: { id: member.id },
           data: type === 'member:ready' ? { ready: payload.ready } : { afk: payload.afk },
         });
+        if (type === 'member:afk' && member.afk !== payload.afk) {
+          if (payload.afk) await closePresence(tx, room.sessionId, userId, new Date(), 'AFK');
+          else if (room.session.phase !== 'LOBBY')
+            await openPresence(tx, room.sessionId, userId, new Date());
+        }
       }
       await bump(tx, roomId);
       return { roomId };

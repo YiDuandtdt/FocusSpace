@@ -31,6 +31,10 @@ model User {
   ownedRooms   Room[]
   memberships  RoomMember[]
   receipts     CommandReceipt[]
+  tasks        Task[]
+  messages     ChatMessage[]
+  presence     PresenceInterval[]
+  records      StudyRecord[]
 }
 model AuthSession {
   id        String @id @default(cuid())
@@ -54,6 +58,7 @@ model Room {
   revision  Int @default(1)
   createdAt DateTime @default(now())
   members   RoomMember[]
+  messages  ChatMessage[]
 }
 model StudySession {
   id           String @id @default(cuid())
@@ -68,6 +73,73 @@ model StudySession {
   endReason    String?
   createdAt    DateTime @default(now())
   room         Room?
+  intervals    PhaseInterval[]
+  presence     PresenceInterval[]
+  tasks        Task[]
+  messages     ChatMessage[]
+  records      StudyRecord[]
+}
+model PhaseInterval {
+  id        String @id @default(cuid())
+  sessionId String
+  session   StudySession @relation(fields: [sessionId], references: [id])
+  roundNo   Int
+  phase     Phase
+  startAt   DateTime
+  endAt     DateTime?
+  @@unique([sessionId, roundNo, phase])
+}
+model PresenceInterval {
+  id        String @id @default(cuid())
+  sessionId String
+  session   StudySession @relation(fields: [sessionId], references: [id])
+  userId    String
+  user      User @relation(fields: [userId], references: [id])
+  startAt   DateTime
+  endAt     DateTime?
+  endReason String?
+  @@index([sessionId, userId])
+}
+model Task {
+  id          String @id @default(cuid())
+  sessionId   String
+  session     StudySession @relation(fields: [sessionId], references: [id])
+  userId      String
+  user        User @relation(fields: [userId], references: [id])
+  title       String
+  completed   Boolean @default(false)
+  completedAt DateTime?
+  version     Int @default(1)
+  createdAt   DateTime @default(now())
+  @@index([sessionId, userId])
+}
+model ChatMessage {
+  id        String @id @default(cuid())
+  roomId    String
+  room      Room @relation(fields: [roomId], references: [id])
+  sessionId String
+  session   StudySession @relation(fields: [sessionId], references: [id])
+  userId    String
+  user      User @relation(fields: [userId], references: [id])
+  content   String
+  createdAt DateTime @default(now())
+  requestId String
+  @@unique([userId, requestId])
+  @@index([sessionId, createdAt])
+  @@index([userId, createdAt])
+}
+model StudyRecord {
+  id              String @id @default(cuid())
+  sessionId       String
+  session         StudySession @relation(fields: [sessionId], references: [id])
+  userId          String
+  user            User @relation(fields: [userId], references: [id])
+  focusSeconds    Int
+  roundsCompleted Int
+  tasksDone       Int
+  tasksTotal      Int
+  studiedWith     Int
+  @@unique([sessionId, userId])
 }
 model RoomMember {
   id              String @id @default(cuid())

@@ -5,18 +5,22 @@ import { useAuth } from '../auth';
 import { errorMessage } from '../api';
 import { Avatar, Notice, RhythmFields } from '../components';
 import { useRoom } from '../state/useRoom';
+import { PhaseTimer, TaskPanel, ChatPanel, SummaryPanel } from '../features/SessionPanels';
 
 const stateLabels = {
   JOINED: '已入座',
   READY: '已准备',
   AFK: '暂时离开',
   DISCONNECTED: '等待重连',
+  FOCUSING: '正在专注',
+  BREAKING: '正在休息',
+  ENDED: '已结束',
 };
 export function RoomPage() {
   const { roomId = '' } = useParams();
   const { user, refresh } = useAuth();
   const navigate = useNavigate();
-  const { data, status, error, removed, command } = useRoom(roomId);
+  const { data, status, error, removed, command, messages, serverNow, syncNow } = useRoom(roomId);
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState('');
   const [copied, setCopied] = useState(false);
@@ -26,6 +30,7 @@ export function RoomPage() {
     setActionError('');
     try {
       await command(type, payload);
+      if (type === 'session:end') await refresh();
       if (type === 'member:leave') {
         await refresh();
         navigate('/');
@@ -66,14 +71,18 @@ export function RoomPage() {
     );
   const me = data.members.find((m) => m.userId === user?.id);
   const ended = data.session.phase === 'ENDED';
+  const lobby = data.session.phase === 'LOBBY';
+  const phaseLabel = { LOBBY: '房间大厅', FOCUS: '正在专注', BREAK: '休息时间', ENDED: '共学结果' }[
+    data.session.phase
+  ];
   const writable = status === 'online' && !busy && !ended;
   const online = data.members.filter((m) => m.connectionState === 'CONNECTED').length;
   return (
-    <div className="room-page">
+    <div className={`room-page phase-${data.session.phase}`}>
       <div className="room-breadcrumb">
         <Link to="/">我的空间</Link>
         <span>/</span>
-        <span>房间大厅</span>
+        <span>{phaseLabel}</span>
         <span className={`connection ${status}`} role="status">
           <i />
           {status === 'online'
@@ -92,7 +101,15 @@ export function RoomPage() {
         <div>
           <span className="eyebrow">{ended ? 'ROOM CLOSED' : 'SETTLE IN, TOGETHER'}</span>
           <h1>{data.room.name}</h1>
-          <p>{ended ? '房主已离开或断线超时，这个房间已经结束。' : '先坐下来，等学习搭子到齐。'}</p>
+          <p>
+            {ended
+              ? '把今天的推进留在这里，下次继续。'
+              : lobby
+                ? '先写下目标，等学习搭子到齐。'
+                : data.session.phase === 'FOCUS'
+                  ? '留一点安静，给正在努力的自己。'
+                  : '这一轮辛苦了，放松一下。'}
+          </p>
         </div>
         <button
           className="invite-code"
@@ -114,95 +131,120 @@ export function RoomPage() {
         </button>
       </div>
       {actionError ? <Notice>{actionError}</Notice> : null}
-      {ended ? (
-        <div className="ended-banner">
-          <div>
-            <strong>这次相聚先到这里</strong>
-            <p>当前阶段尚未开始计时，不生成学习记录。新建房间即可再次邀请朋友。</p>
-          </div>
-          <Link className="button primary" to="/">
-            回到首页 ↗
-          </Link>
-        </div>
+      {data.summary ? <SummaryPanel summary={data.summary} /> : null}
+      {!lobby && !ended ? (
+        <PhaseTimer
+          key={`${roomId}-${data.session.phaseEndAt}`}
+          session={data.session}
+          serverNow={serverNow}
+          syncNow={syncNow}
+        />
       ) : null}
       <div className="room-grid">
-        <section className="space-panel">
-          <div className="space-top">
-            <span>
-              <i className="status-dot" />
-              {ended ? '已结束' : '房间大厅'}
-            </span>
-            <span>
-              {online} 人在线 / {data.room.capacity} 个座位
-            </span>
-          </div>
-          <div className="seating-room">
-            <div className="room-window" aria-hidden="true">
-              <span />
-              <span />
-              <span />
-            </div>
-            <div className="seats seats-top">
-              {[0, 1, 2, 3].map((i) => (
-                <Seat
-                  key={i}
-                  index={i}
-                  member={data.members.find((m) => m.seatIndex === i)}
-                  userId={user?.id}
-                />
-              ))}
-            </div>
-            <div className="study-table">
-              <span className="table-book" aria-hidden="true" />
-              <div>
-                <span className="eyebrow">SHARED SPACE</span>
-                <strong>各自学习，一起专注</strong>
-                <span>给今天的目标，留一个位置。</span>
-              </div>
-              <span className="table-plant" aria-hidden="true">
-                ✳
+        <div className="room-main">
+          <TaskPanel tasks={data.myTasks} disabled={!writable} ended={ended} command={command} />
+          <ChatPanel data={data} messages={messages} disabled={!writable} command={command} />
+          <section className="space-panel">
+            <div className="space-top">
+              <span>
+                <i className="status-dot" />
+                {phaseLabel}
+              </span>
+              <span>
+                {online} 人在线 / {data.room.capacity} 个座位
               </span>
             </div>
-            <div className="seats seats-bottom">
-              {[4, 5, 6, 7].map((i) => (
-                <Seat
-                  key={i}
-                  index={i}
-                  member={data.members.find((m) => m.seatIndex === i)}
-                  userId={user?.id}
-                />
-              ))}
+            <div className="seating-room">
+              <div className="room-window" aria-hidden="true">
+                <span />
+                <span />
+                <span />
+              </div>
+              <div className="seats seats-top">
+                {[0, 1, 2, 3].map((i) => (
+                  <Seat
+                    key={i}
+                    index={i}
+                    member={data.members.find((m) => m.seatIndex === i)}
+                    userId={user?.id}
+                  />
+                ))}
+              </div>
+              <div className="study-table">
+                <span className="table-book" aria-hidden="true" />
+                <div>
+                  <span className="eyebrow">SHARED SPACE</span>
+                  <strong>各自学习，一起专注</strong>
+                  <span>给今天的目标，留一个位置。</span>
+                </div>
+                <span className="table-plant" aria-hidden="true">
+                  ✳
+                </span>
+              </div>
+              <div className="seats seats-bottom">
+                {[4, 5, 6, 7].map((i) => (
+                  <Seat
+                    key={i}
+                    index={i}
+                    member={data.members.find((m) => m.seatIndex === i)}
+                    userId={user?.id}
+                  />
+                ))}
+              </div>
             </div>
-          </div>
-          <div className="space-caption">
-            <span>房间仅通过房间码加入</span>
-            <span>成员变化实时同步</span>
-          </div>
-          <div className="lobby-controls">
-            <div>
-              <strong>
-                {me?.afk ? '稍作离开，也没关系' : me?.ready ? '你已准备好' : '安顿好，就准备一下'}
-              </strong>
-              <p>准备状态对房间内的所有人可见。</p>
+            <div className="space-caption">
+              <span>房间仅通过房间码加入</span>
+              <span>成员变化实时同步</span>
             </div>
-            <div>
-              <button
-                className="button secondary"
-                disabled={!writable}
-                onClick={() => void perform('member:afk', { afk: !me?.afk })}
-              >
-                {me?.afk ? '我回来了' : '暂时离开'}
-              </button>
-              <button
-                className="button primary"
-                disabled={!writable || me?.afk}
-                onClick={() => void perform('member:ready', { ready: !me?.ready })}
-              >
-                {me?.ready ? '取消准备' : '我准备好了'} <span aria-hidden="true">✓</span>
-              </button>
+            <div className="lobby-controls">
+              <div>
+                <strong>
+                  {me?.afk
+                    ? '稍作离开，也没关系'
+                    : lobby
+                      ? me?.ready
+                        ? '你已准备好'
+                        : '安顿好，就准备一下'
+                      : phaseLabel}
+                </strong>
+                <p>
+                  {lobby
+                    ? '所有成员在线、非暂离且准备后，房主可以开始。'
+                    : me?.lateJoin
+                      ? '你是中途加入，从入座连接后开始计时。'
+                      : '暂离时暂停个人计时，房间节奏继续。'}
+                </p>
+              </div>
+              <div>
+                <button
+                  className="button secondary"
+                  disabled={!writable}
+                  onClick={() => void perform('member:afk', { afk: !me?.afk })}
+                >
+                  {me?.afk ? '我回来了' : '暂时离开'}
+                </button>
+                {lobby ? (
+                  <button
+                    className="button primary"
+                    disabled={!writable || me?.afk}
+                    onClick={() => void perform('member:ready', { ready: !me?.ready })}
+                  >
+                    {me?.ready ? '取消准备' : '我准备好了'} <span aria-hidden="true">✓</span>
+                  </button>
+                ) : null}
+                {lobby && data.myPermissions.isOwner ? (
+                  <button
+                    className="button primary"
+                    disabled={!writable || !data.myPermissions.canStart}
+                    onClick={() => void perform('session:start')}
+                  >
+                    开始共学
+                  </button>
+                ) : null}
+              </div>
             </div>
-          </div>
-        </section>
+          </section>
+        </div>
         <aside className="room-sidebar">
           <section className="panel members-panel">
             <div className="panel-heading">
@@ -225,6 +267,12 @@ export function RoomPage() {
                         ? '房主'
                         : `座位 ${String(member.seatIndex + 1).padStart(2, '0')}`}
                     </span>
+                    <span>
+                      {member.lateJoin ? '中途加入 · ' : ''}
+                      {member.tasksTotal
+                        ? `${member.tasksDone} / ${member.tasksTotal} · ${member.progressPercent}%`
+                        : '未设置任务'}
+                    </span>
                   </div>
                   <span className={`member-state state-${member.status}`}>
                     {stateLabels[member.status]}
@@ -243,16 +291,18 @@ export function RoomPage() {
             onSave={(payload) => perform('room:configure', payload)}
           />
           <p className="phase-note">
-            当前开放房间大厅与成员同步。
-            <br />
-            共享计时、任务和聊天将在后续开放。
+            {lobby
+              ? '准备好后，房主开始共享专注。'
+              : ended
+                ? '本次结果已保存，继续共学请新建房间。'
+                : '共享节奏由房间统一推进，刷新后恢复当前轮次。'}
           </p>
           <button
             className="text-button leave-button"
             disabled={!writable}
             onClick={() => setConfirmLeave(true)}
           >
-            {data.myPermissions.isOwner ? '结束并离开房间' : '离开房间'}{' '}
+            {data.myPermissions.isOwner ? '结束共学' : '离开房间'}{' '}
             <span aria-hidden="true">↗</span>
           </button>
         </aside>
@@ -283,10 +333,10 @@ export function RoomPage() {
               disabled={!writable}
               onClick={() => {
                 setConfirmLeave(false);
-                void perform('member:leave');
+                void perform(data.myPermissions.isOwner ? 'session:end' : 'member:leave');
               }}
             >
-              确认离开
+              {data.myPermissions.isOwner ? '确认结束' : '确认离开'}
             </button>
           </div>
         </dialog>
@@ -305,7 +355,7 @@ function Seat({ index, member, userId }: { index: number; member?: Member; userI
         ) : (
           <span aria-hidden="true">＋</span>
         )}
-        {member?.ready ? (
+        {member?.status === 'READY' ? (
           <span className="seat-ready" aria-label="已准备">
             ✓
           </span>
@@ -349,7 +399,16 @@ function RhythmPanel({
           <span className="muted">房主设置</span>
         )}
       </div>
-      {editing ? (
+      {data.demoAvailable && data.myPermissions.canConfigure ? (
+        <button
+          className="text-button"
+          disabled={disabled}
+          onClick={() => void onSave({ focusSeconds: 45, breakSeconds: 15 })}
+        >
+          使用 45/15 秒演示节奏
+        </button>
+      ) : null}
+      {editing && data.myPermissions.canConfigure ? (
         <form onSubmit={save}>
           <RhythmFields
             focus={focus}
@@ -367,13 +426,13 @@ function RhythmPanel({
         <>
           <div className="rhythm-display">
             <div>
-              <strong>{data.session.focusSeconds / 60}</strong>
-              <span>分钟专注</span>
+              <strong>{data.session.demoMode ? 45 : data.session.focusSeconds / 60}</strong>
+              <span>{data.session.demoMode ? '秒专注 · 演示' : '分钟专注'}</span>
             </div>
             <span className="rhythm-slash">/</span>
             <div>
-              <strong>{data.session.breakSeconds / 60}</strong>
-              <span>分钟休息</span>
+              <strong>{data.session.demoMode ? 15 : data.session.breakSeconds / 60}</strong>
+              <span>{data.session.demoMode ? '秒休息 · 演示' : '分钟休息'}</span>
             </div>
           </div>
           <p className="muted">先约定节奏，再一起开始。</p>
