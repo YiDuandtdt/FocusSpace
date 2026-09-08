@@ -24,6 +24,7 @@ dist/
 .env.local
 prisma/data/
 .tmp/
+backups/
 *.log
 playwright-report/
 test-results/

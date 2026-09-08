@@ -18,6 +18,7 @@ export function HomePage() {
   }, [refresh]);
   async function enter(event: FormEvent, mode: 'create' | 'join') {
     event.preventDefault();
+    if (busy || currentRoomId) return;
     setBusy(mode);
     setError('');
     try {
@@ -35,6 +36,8 @@ export function HomePage() {
       navigate(`/rooms/${result.roomId}`);
     } catch (e) {
       setError(errorMessage(e));
+      // A timed-out request may have committed; expose the current-room return path.
+      await refresh();
     } finally {
       setBusy('');
     }

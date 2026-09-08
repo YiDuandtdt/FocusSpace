@@ -4,47 +4,82 @@ import { AppError } from '../errors.js';
 import { bump, receipt, requireMember } from './room.js';
 import { openPresence, closePresence } from './presence.js';
 import { saveRecords } from './record.js';
+import { config } from '../config.js';
 
 type Tx = Prisma.TransactionClient;
 export async function advanceSession(tx: Tx, roomId: string, at = new Date()) {
   const room = await tx.room.findUnique({ where: { id: roomId }, include: { session: true } });
   if (!room) return false;
-  let session = room.session;
-  let changed = false;
-  while (
-    (session.phase === 'FOCUS' || session.phase === 'BREAK') &&
-    session.phaseEndAt &&
-    session.phaseEndAt <= at
-  ) {
-    const boundary = session.phaseEndAt;
-    await tx.phaseInterval.updateMany({
-      where: { sessionId: session.id, endAt: null },
-      data: { endAt: boundary },
+  const session = room.session;
+  if (!['FOCUS', 'BREAK'].includes(session.phase) || !session.phaseEndAt || session.phaseEndAt > at)
+    return false;
+  await tx.phaseInterval.updateMany({
+    where: { sessionId: session.id, endAt: null },
+    data: { endAt: session.phaseEndAt },
+  });
+  let phase = session.phase;
+  let roundNo = session.roundNo;
+  let boundary = session.phaseEndAt;
+  let startAt = boundary;
+  let intervals: Prisma.PhaseIntervalCreateManyInput[] = [];
+  // Compute boundaries in memory and insert in bounded batches. A long outage
+  // must not require four database round trips for every missed phase.
+  do {
+    phase = phase === 'FOCUS' ? 'BREAK' : 'FOCUS';
+    roundNo += phase === 'FOCUS' ? 1 : 0;
+    startAt = boundary;
+    boundary = new Date(
+      startAt.getTime() + (phase === 'FOCUS' ? session.focusSeconds : session.breakSeconds) * 1000,
+    );
+    intervals.push({
+      sessionId: session.id,
+      roundNo,
+      phase,
+      startAt,
+      endAt: boundary <= at ? boundary : null,
     });
-    const phase = session.phase === 'FOCUS' ? 'BREAK' : 'FOCUS';
-    const roundNo = session.roundNo + (phase === 'FOCUS' ? 1 : 0);
-    await tx.phaseInterval.create({
-      data: { sessionId: session.id, roundNo, phase, startAt: boundary },
-    });
-    session = await tx.studySession.update({
-      where: { id: session.id },
-      data: {
-        phase,
-        roundNo,
-        phaseStartAt: boundary,
-        phaseEndAt: new Date(
-          boundary.getTime() +
-            (phase === 'FOCUS' ? session.focusSeconds : session.breakSeconds) * 1000,
-        ),
-      },
-    });
-    await bump(tx, roomId);
-    changed = true;
-  }
-  return changed;
+    if (intervals.length === 100) {
+      await tx.phaseInterval.createMany({ data: intervals });
+      intervals = [];
+    }
+  } while (boundary <= at);
+  if (intervals.length) await tx.phaseInterval.createMany({ data: intervals });
+  await tx.studySession.update({
+    where: { id: session.id },
+    data: {
+      phase,
+      roundNo,
+      phaseStartAt: startAt,
+      phaseEndAt: boundary,
+    },
+  });
+  await bump(tx, roomId);
+  return true;
 }
+
+export function reconnectDeadline(member: { reconnectDeadlineAt: Date | null; lastSeenAt: Date }) {
+  return (
+    member.reconnectDeadlineAt ?? new Date(member.lastSeenAt.getTime() + config.DISCONNECT_GRACE_MS)
+  );
+}
+
+async function reconcileRoom(tx: Tx, roomId: string, at: Date) {
+  const room = await tx.room.findUnique({
+    where: { id: roomId },
+    include: { session: true, members: true },
+  });
+  if (!room || room.session.phase === 'ENDED') return false;
+  const owner = room.members.find((member) => member.userId === room.ownerId);
+  if (owner?.connectionState === 'DISCONNECTED' && reconnectDeadline(owner) <= at) {
+    // End on the persisted deadline, even if the scheduler/database was unavailable.
+    await finishSession(tx, roomId, 'OWNER_DISCONNECTED', reconnectDeadline(owner));
+    return true;
+  }
+  return advanceSession(tx, roomId, at);
+}
+
 export const advanceRoom = (roomId: string, at = new Date()) =>
-  db.$transaction((tx) => advanceSession(tx, roomId, at), { timeout: 60000 });
+  db.$transaction((tx) => reconcileRoom(tx, roomId, at), { timeout: 60000 });
 
 export async function finishSession(tx: Tx, roomId: string, reason: string, at = new Date()) {
   await advanceSession(tx, roomId, at);
@@ -115,7 +150,7 @@ export async function sessionCommand(
   );
 }
 
-export async function recoverSessions() {
+export async function recoverSessions(at = new Date()) {
   const rooms = await db.room.findMany({
     where: { session: { phase: { not: 'ENDED' } } },
     include: { members: true },
@@ -132,11 +167,18 @@ export async function recoverSessions() {
             member.lastSeenAt,
             'SERVER_RESTART',
           );
-        await tx.roomMember.updateMany({
-          where: { roomId: room.id, leftAt: null },
-          data: { connectionState: 'DISCONNECTED', lastSeenAt: new Date() },
-        });
-        await advanceSession(tx, room.id);
+        for (const member of room.members.filter((member) => !member.leftAt))
+          await tx.roomMember.update({
+            where: { id: member.id },
+            data: {
+              connectionState: 'DISCONNECTED',
+              reconnectDeadlineAt:
+                member.connectionState === 'CONNECTED'
+                  ? new Date(at.getTime() + config.DISCONNECT_GRACE_MS)
+                  : reconnectDeadline(member),
+            },
+          });
+        await reconcileRoom(tx, room.id, at);
         await bump(tx, room.id);
       },
       { timeout: 60000 },

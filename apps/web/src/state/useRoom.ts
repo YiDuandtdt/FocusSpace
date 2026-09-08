@@ -28,6 +28,9 @@ export function useRoom(roomId: string) {
   const syncRef = useRef<() => void>(() => undefined);
   const syncNow = useCallback(() => syncRef.current(), []);
   const socketRef = useRef<Socket | null>(null);
+  const pendingCommands = useRef(
+    new Map<string, { requestId: string; roomId: string; payload: unknown }>(),
+  );
   const accept = useCallback(
     (incoming: RoomSnapshot) =>
       setData((old) =>
@@ -44,6 +47,7 @@ export function useRoom(roomId: string) {
     setRemoved(false);
     setStatus('connecting');
     setMessages([]);
+    pendingCommands.current.clear();
     const socket = io({
       autoConnect: false,
       withCredentials: true,
@@ -51,18 +55,26 @@ export function useRoom(roomId: string) {
       reconnectionDelayMax: 5000,
     });
     socketRef.current = socket;
+    let syncing = false;
+    let terminal = false;
     const expire = () => {
       if (alive) window.dispatchEvent(new Event('focusspace:unauthorized'));
     };
     const removed = (detail?: { message: string }) => {
       if (alive) {
+        terminal = true;
         setRemoved(true);
         setStatus('offline');
         setError(detail?.message ?? '你已离开这个房间');
       }
     };
     function sync(type: 'room:join' | 'room:sync' = 'room:sync') {
-      if (!alive || !socket.connected) return;
+      if (!alive || terminal || syncing) return;
+      if (!socket.connected) {
+        socket.connect();
+        return;
+      }
+      syncing = true;
       const sentAt = performance.now();
       socket
         .timeout(8000)
@@ -70,6 +82,7 @@ export function useRoom(roomId: string) {
           type,
           { requestId: crypto.randomUUID(), roomId, payload: {} },
           (error: Error | null, ack: Ack) => {
+            syncing = false;
             if (!alive) return;
             if (error) {
               setStatus('offline');
@@ -79,7 +92,11 @@ export function useRoom(roomId: string) {
             }
             if (!ack.ok) {
               if (ack.error?.code === 'UNAUTHORIZED') expire();
-              else removed(ack.error);
+              else if (ack.error?.code === 'ROOM_NOT_FOUND') removed(ack.error);
+              else {
+                setStatus('offline');
+                setError(ack.error?.message ?? '状态同步失败，请重试连接');
+              }
               return;
             }
             if (ack.data) {
@@ -94,6 +111,7 @@ export function useRoom(roomId: string) {
     syncRef.current = sync;
     socket.on('connect', () => sync('room:join'));
     socket.on('disconnect', () => {
+      syncing = false;
       if (alive) setStatus('offline');
     });
     socket.on('connect_error', (error: Error) => {
@@ -113,6 +131,12 @@ export function useRoom(roomId: string) {
     });
     socket.on('auth:expired', expire);
     socket.on('room:removed', removed);
+    socket.on('room:error', (detail: { message: string }) => {
+      if (alive) {
+        setStatus('offline');
+        setError(detail.message);
+      }
+    });
     // Read persisted membership first. Opening a URL never grants a seat.
     const sentAt = performance.now();
     void api<RoomSnapshot>(`/rooms/${roomId}/snapshot`)
@@ -126,28 +150,41 @@ export function useRoom(roomId: string) {
         if (alive) {
           setError(errorMessage(error));
           setStatus('offline');
-          if (error instanceof RequestError && error.code === 'ROOM_NOT_FOUND') setRemoved(true);
+          if (error instanceof RequestError && error.code === 'ROOM_NOT_FOUND')
+            removed({ message: error.message });
+          else if (!(error instanceof RequestError && error.code === 'UNAUTHORIZED'))
+            socket.connect();
         }
       });
-    const interval = setInterval(() => sync(), 30000);
+    const interval = setInterval(() => sync(), 10000);
     const visible = () => {
       if (document.visibilityState === 'visible') sync();
     };
     document.addEventListener('visibilitychange', visible);
+    window.addEventListener('online', syncNow);
     return () => {
       alive = false;
       clearInterval(interval);
       document.removeEventListener('visibilitychange', visible);
+      window.removeEventListener('online', syncNow);
       socket.removeAllListeners();
       socket.disconnect();
       socketRef.current = null;
       syncRef.current = () => undefined;
     };
-  }, [roomId, accept, calibrate]);
+  }, [roomId, accept, calibrate, syncNow]);
   const command = async (type: RoomCommand, payload: unknown = {}) => {
     const socket = socketRef.current;
     if (!socket?.connected || status !== 'online') throw new Error('连接尚未恢复，请稍后操作');
-    const input = { requestId: crypto.randomUUID(), roomId, payload };
+    const key = type + ':' + JSON.stringify(payload);
+    // A failed acknowledgement can follow a committed write. Manual retry must
+    // use the same receipt, including chat (which is never auto-sent on reconnect).
+    const input = pendingCommands.current.get(key) ?? {
+      requestId: crypto.randomUUID(),
+      roomId,
+      payload,
+    };
+    pendingCommands.current.set(key, input);
     const send = () =>
       new Promise<Ack>((resolve, reject) =>
         socket
@@ -172,9 +209,12 @@ export function useRoom(roomId: string) {
       }
     }
     if (!ack.ok) {
+      if (!['DATABASE_UNAVAILABLE', 'INTERNAL_ERROR'].includes(ack.error?.code ?? ''))
+        pendingCommands.current.delete(key);
       syncNow();
       throw new Error(ack.error?.message ?? '操作未完成');
     }
+    pendingCommands.current.delete(key);
     if (ack.data) accept(ack.data);
   };
   return { data, status, error, removed, command, messages, serverNow, syncNow };

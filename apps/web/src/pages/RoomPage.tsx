@@ -20,6 +20,7 @@ export function RoomPage() {
   const [copied, setCopied] = useState(false);
   const [confirmLeave, setConfirmLeave] = useState(false);
   async function perform(type: RoomCommand, payload: unknown = {}) {
+    if (busy) return;
     setBusy(true);
     setActionError('');
     try {
@@ -56,7 +57,7 @@ export function RoomPage() {
             返回首页
           </Link>
           {error ? (
-            <button className="button primary" onClick={() => window.location.reload()}>
+            <button className="button primary" onClick={syncNow}>
               重试连接
             </button>
           ) : null}
@@ -88,7 +89,10 @@ export function RoomPage() {
       </div>
       {status !== 'online' ? (
         <div className="connection-banner" role="status">
-          {error || '连接中断，成员位置暂时保留 60 秒。恢复连接后可以继续操作。'}
+          {error || '连接中断，正在恢复。座位在宽限期内保留，恢复连接后可以继续操作。'}
+          <button className="text-button" onClick={syncNow}>
+            重试连接
+          </button>
         </div>
       ) : null}
       <div className="room-heading">

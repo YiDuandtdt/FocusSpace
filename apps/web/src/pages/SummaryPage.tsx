@@ -9,6 +9,7 @@ export function SummaryPage() {
   const { sessionId } = useParams();
   const [data, setData] = useState<SessionSummary | null>(null);
   const [error, setError] = useState('');
+  const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     let alive = true;
     setData(null);
@@ -23,7 +24,7 @@ export function SummaryPage() {
     return () => {
       alive = false;
     };
-  }, [sessionId]);
+  }, [sessionId, attempt]);
   return (
     <div className="room-page">
       <Link className="text-button" to="/">
@@ -35,7 +36,12 @@ export function SummaryPage() {
           <SummaryPanel summary={data} />
         </>
       ) : error ? (
-        <Notice>{error}</Notice>
+        <Notice>
+          {error}{' '}
+          <button className="text-button" onClick={() => setAttempt((value) => value + 1)}>
+            重新读取结果
+          </button>
+        </Notice>
       ) : (
         <p>正在读取已保存结果…</p>
       )}

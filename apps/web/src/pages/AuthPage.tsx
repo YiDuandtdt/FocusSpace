@@ -10,7 +10,10 @@ export function AuthPage({ register = false }: { register?: boolean }) {
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const returnTo = params.get('next');
-  const next = returnTo?.startsWith('/rooms/') ? returnTo : '/';
+  const next =
+    returnTo && /^\/(?:rooms\/[^/?#\\]+|sessions\/[^/?#\\]+\/summary)$/.test(returnTo)
+      ? returnTo
+      : '/';
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [nickname, setNickname] = useState('');
@@ -20,6 +23,7 @@ export function AuthPage({ register = false }: { register?: boolean }) {
   if (user) return <Navigate to={next} replace />;
   async function submit(event: FormEvent) {
     event.preventDefault();
+    if (busy) return;
     setError('');
     setBusy(true);
     try {

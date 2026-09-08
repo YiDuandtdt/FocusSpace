@@ -20,14 +20,14 @@ function Protected({ children }: { children: ReactNode }) {
   );
 }
 function App() {
-  const { loading, error, refresh } = useAuth();
+  const { loading, error, refresh, user } = useAuth();
   return (
     <Shell>
       {loading ? (
         <section className="empty-state">
           <h2>正在打开你的空间…</h2>
         </section>
-      ) : error ? (
+      ) : error && !user ? (
         <section className="empty-state">
           <Notice>{error}</Notice>
           <button className="button primary" onClick={() => void refresh()}>
@@ -35,45 +35,55 @@ function App() {
           </button>
         </section>
       ) : (
-        <Routes>
-          <Route
-            path="/sessions/:sessionId/summary"
-            element={
-              <Protected>
-                <SummaryPage />
-              </Protected>
-            }
-          />
-          <Route path="/login" element={<AuthPage key="login" />} />
-          <Route path="/register" element={<AuthPage key="register" register />} />
-          <Route
-            path="/"
-            element={
-              <Protected>
-                <HomePage />
-              </Protected>
-            }
-          />
-          <Route
-            path="/rooms/:roomId"
-            element={
-              <Protected>
-                <RoomPage />
-              </Protected>
-            }
-          />
-          <Route
-            path="*"
-            element={
-              <section className="empty-state">
-                <h1>这里还没有座位</h1>
-                <Link to="/" className="button primary">
-                  返回首页
-                </Link>
-              </section>
-            }
-          />
-        </Routes>
+        <>
+          {error ? (
+            <Notice>
+              {error}{' '}
+              <button className="text-button" onClick={() => void refresh()}>
+                重新连接
+              </button>
+            </Notice>
+          ) : null}
+          <Routes>
+            <Route
+              path="/sessions/:sessionId/summary"
+              element={
+                <Protected>
+                  <SummaryPage />
+                </Protected>
+              }
+            />
+            <Route path="/login" element={<AuthPage key="login" />} />
+            <Route path="/register" element={<AuthPage key="register" register />} />
+            <Route
+              path="/"
+              element={
+                <Protected>
+                  <HomePage />
+                </Protected>
+              }
+            />
+            <Route
+              path="/rooms/:roomId"
+              element={
+                <Protected>
+                  <RoomPage />
+                </Protected>
+              }
+            />
+            <Route
+              path="*"
+              element={
+                <section className="empty-state">
+                  <h1>这里还没有座位</h1>
+                  <Link to="/" className="button primary">
+                    返回首页
+                  </Link>
+                </section>
+              }
+            />
+          </Routes>
+        </>
       )}
     </Shell>
   );

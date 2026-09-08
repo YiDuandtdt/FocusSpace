@@ -26,10 +26,12 @@ import {
 import { createRealtime } from './realtime/index.js';
 import { advanceRoom, recoverSessions } from './modules/session.js';
 import { summary } from './modules/record.js';
+import { retainData } from './modules/retention.js';
 
 await db.$connect();
 await db.$queryRaw`PRAGMA journal_mode=WAL`;
 await recoverSessions();
+await retainData();
 const app = express();
 app.disable('x-powered-by');
 const server = createServer(app);
@@ -164,17 +166,33 @@ app.get('/api/sessions/:id/summary', async (req, res) => {
 app.use('/api', (_req, _res, next) => next(new AppError('NOT_FOUND', '接口不存在', 404)));
 const webPath = fileURLToPath(new URL('../../web/dist/', import.meta.url));
 if (existsSync(webPath)) {
-  app.use(express.static(webPath));
-  app.get('/{*path}', (_req, res) => res.sendFile(`${webPath}/index.html`));
+  app.use('/assets', express.static(`${webPath}/assets`, { immutable: true, maxAge: '1y' }));
+  app.use(
+    express.static(webPath, { setHeaders: (res) => res.setHeader('Cache-Control', 'no-cache') }),
+  );
+  app.use(['/assets', '/audio'], (_req, res) => res.status(404).end());
+  app.get('/{*path}', (_req, res) => {
+    res.setHeader('Cache-Control', 'no-cache');
+    res.sendFile(`${webPath}/index.html`);
+  });
 }
 const handleError: ErrorRequestHandler = (error, _req, res, _next) => {
   const malformed = error instanceof SyntaxError && 'body' in error;
+  const detail = malformed
+    ? { code: 'VALIDATION_ERROR', message: '请求格式无效' }
+    : publicError(error);
   res
     .status(
-      error instanceof AppError ? error.status : error instanceof ZodError || malformed ? 400 : 500,
+      error instanceof AppError
+        ? error.status
+        : error instanceof ZodError || malformed
+          ? 400
+          : detail.code === 'DATABASE_UNAVAILABLE'
+            ? 503
+            : 500,
     )
     .json({
-      error: malformed ? { code: 'VALIDATION_ERROR', message: '请求格式无效' } : publicError(error),
+      error: detail,
     });
 };
 app.use(handleError);

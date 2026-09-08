@@ -6,7 +6,7 @@ import { AppError } from '../errors.js';
 import { digest } from './auth.js';
 import { config } from '../config.js';
 import { openPresence, closePresence } from './presence.js';
-import { finishSession } from './session.js';
+import { finishSession, reconnectDeadline } from './session.js';
 import { summary } from './record.js';
 
 type Tx = Prisma.TransactionClient;
@@ -36,11 +36,20 @@ export async function receipt<T>(
   if (old) {
     if (old.commandType !== commandType || old.payloadHash !== payloadHash)
       throw new AppError('CONFLICT', '此请求标识已用于不同操作，请重新操作', 409);
-    return JSON.parse(old.result) as T;
+    const result = JSON.parse(old.result);
+    if (result.expired) throw new AppError('REQUEST_EXPIRED', '该消息已超过保留期限', 409);
+    return result as T;
   }
   const result = await work();
   await tx.commandReceipt.create({
-    data: { userId, requestId, commandType, payloadHash, result: JSON.stringify(result) },
+    data: {
+      userId,
+      requestId,
+      commandType,
+      payloadHash,
+      result: JSON.stringify(result),
+      roomId: (result as { roomId?: string })?.roomId ?? (payload as { roomId?: string })?.roomId,
+    },
   });
   return result;
 }
@@ -101,6 +110,7 @@ export async function joinRoom(userId: string, input: { requestId: string; code:
             leftAt: null,
             joinedAt: new Date(),
             lastSeenAt: new Date(),
+            reconnectDeadlineAt: null,
             connectionState: 'DISCONNECTED',
           },
         });
@@ -228,9 +238,19 @@ export async function setConnected(
     if (room.session.phase === 'ENDED' || member.leftAt) return;
     const state = connected ? 'CONNECTED' : 'DISCONNECTED';
     if (member.connectionState === state) return;
+    if (connected && reconnectDeadline(member) <= at) {
+      if (room.ownerId === userId)
+        await finishSession(tx, roomId, 'OWNER_DISCONNECTED', reconnectDeadline(member));
+      else await leaveMember(tx, roomId, userId, 'DISCONNECTED');
+      return;
+    }
     await tx.roomMember.update({
       where: { id: member.id },
-      data: { connectionState: state, lastSeenAt: at },
+      data: {
+        connectionState: state,
+        lastSeenAt: at,
+        reconnectDeadlineAt: connected ? null : new Date(at.getTime() + config.DISCONNECT_GRACE_MS),
+      },
     });
     if (!connected) await closePresence(tx, room.sessionId, userId, at, 'DISCONNECTED');
     else if (!member.afk && room.session.phase !== 'LOBBY')

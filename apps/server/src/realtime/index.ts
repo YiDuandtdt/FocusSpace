@@ -23,7 +23,8 @@ import {
   setConnected,
   snapshot,
 } from '../modules/room.js';
-import { advanceRoom, sessionCommand } from '../modules/session.js';
+import { advanceRoom, reconnectDeadline, sessionCommand } from '../modules/session.js';
+import { retainData } from '../modules/retention.js';
 import { taskCommand } from '../modules/task.js';
 import { sendChat } from '../modules/chat.js';
 
@@ -55,8 +56,20 @@ export function createRealtime(server: HttpServer) {
     [...subscriptions.values()].some(
       (s) => s.roomId === roomId && s.userId === userId && s.socket.connected,
     );
+  // Keep failed disconnect writes until committed; a reconnect must close the old interval first.
+  const disconnections = new Map<string, { roomId: string; userId: string; at: Date }>();
+  const reportUnavailable = (error: unknown) => io.emit('room:error', publicError(error));
+  async function flushDisconnects() {
+    for (const [key, entry] of disconnections) {
+      try {
+        await setConnected(entry.roomId, entry.userId, false, entry.at);
+      } catch (error) {
+        if (!(error instanceof AppError && error.code === 'ROOM_NOT_FOUND')) throw error;
+      }
+      disconnections.delete(key);
+    }
+  }
   async function broadcast(roomId: string, type = 'member:updated', message?: ChatMessage) {
-    let presenceChanged = false;
     for (const entry of [...subscriptions.values()].filter((s) => s.roomId === roomId)) {
       try {
         await authenticate(entry.socket.request.headers.cookie);
@@ -82,18 +95,17 @@ export function createRealtime(server: HttpServer) {
         }
       } catch (error) {
         const detail = publicError(error);
-        entry.socket.emit(detail.code === 'UNAUTHORIZED' ? 'auth:expired' : 'room:removed', detail);
-        subscriptions.delete(entry.socket.id);
-        if (detail.code === 'UNAUTHORIZED') {
-          if (!hasConnection(roomId, entry.userId)) {
-            await setConnected(roomId, entry.userId, false);
-            presenceChanged = true;
-          }
-          entry.socket.disconnect(true);
+        if (!['UNAUTHORIZED', 'ROOM_NOT_FOUND'].includes(detail.code)) {
+          entry.socket.emit('room:error', detail);
+          continue;
         }
+        entry.socket.emit(detail.code === 'UNAUTHORIZED' ? 'auth:expired' : 'room:removed', detail);
+        if (detail.code === 'UNAUTHORIZED') {
+          // Disconnect owns the durable presence transition, including write retries.
+          entry.socket.disconnect(true);
+        } else subscriptions.delete(entry.socket.id);
       }
     }
-    if (presenceChanged) await broadcast(roomId, type);
   }
   io.use(async (socket, next) => {
     try {
@@ -101,8 +113,8 @@ export function createRealtime(server: HttpServer) {
       socket.data.userId = auth.userId;
       socket.data.authId = auth.id;
       next();
-    } catch {
-      next(new Error('UNAUTHORIZED'));
+    } catch (error) {
+      next(new Error(publicError(error).code));
     }
   });
   io.on('connection', (socket) => {
@@ -124,7 +136,7 @@ export function createRealtime(server: HttpServer) {
               },
               data: { lastSeenAt: at },
             });
-          }).catch(console.error);
+          }).catch(reportUnavailable);
         }
       }
     });
@@ -160,6 +172,7 @@ export function createRealtime(server: HttpServer) {
             const input = commandSchema.parse(raw);
             requestId = input.requestId;
             if (!socket.connected) return;
+            await flushDisconnects();
             const entry = subscriptions.get(socket.id);
             if (entry) entry.lastSeenAt = Date.now();
             await requireMember(input.roomId, auth.userId, db, true).catch((error) => {
@@ -173,10 +186,17 @@ export function createRealtime(server: HttpServer) {
               const previous = subscriptions.get(socket.id);
               if (previous && previous.roomId !== input.roomId) {
                 subscriptions.delete(socket.id);
-                if (!hasConnection(previous.roomId, auth.userId))
-                  await setConnected(previous.roomId, auth.userId, false);
+                if (!hasConnection(previous.roomId, auth.userId)) {
+                  disconnections.set(previous.roomId + ':' + auth.userId, {
+                    roomId: previous.roomId,
+                    userId: auth.userId,
+                    at: new Date(),
+                  });
+                  await flushDisconnects();
+                }
                 await broadcast(previous.roomId);
               }
+              await setConnected(input.roomId, auth.userId, true);
               subscriptions.set(socket.id, {
                 socket,
                 userId: auth.userId,
@@ -184,7 +204,6 @@ export function createRealtime(server: HttpServer) {
                 authId: auth.id,
                 lastSeenAt: Date.now(),
               });
-              await setConnected(input.roomId, auth.userId, true);
             } else {
               if (type !== 'member:leave' && subscriptions.get(socket.id)?.roomId !== input.roomId)
                 throw new AppError('FORBIDDEN', '请先连接房间', 403);
@@ -225,17 +244,17 @@ export function createRealtime(server: HttpServer) {
         const entry = subscriptions.get(socket.id);
         subscriptions.delete(socket.id);
         if (entry && !hasConnection(entry.roomId, entry.userId)) {
+          disconnections.set(`${entry.roomId}:${entry.userId}`, {
+            roomId: entry.roomId,
+            userId: entry.userId,
+            at: reason === 'ping timeout' ? new Date(entry.lastSeenAt) : detectedAt,
+          });
           try {
+            await flushDisconnects();
             await advanceRoom(entry.roomId);
-            await setConnected(
-              entry.roomId,
-              entry.userId,
-              false,
-              reason === 'ping timeout' ? new Date(entry.lastSeenAt) : detectedAt,
-            );
             await broadcast(entry.roomId);
           } catch (error) {
-            if (!(error instanceof AppError)) console.error(error);
+            if (!(error instanceof AppError)) reportUnavailable(error);
           }
         }
       }).catch(console.error);
@@ -246,6 +265,7 @@ export function createRealtime(server: HttpServer) {
     if (sweeping) return;
     sweeping = true;
     void serialize(async () => {
+      await flushDisconnects();
       const changed = new Set<string>();
       const due = await db.room.findMany({
         where: { session: { phase: { in: ['FOCUS', 'BREAK'] }, phaseEndAt: { lte: new Date() } } },
@@ -255,34 +275,38 @@ export function createRealtime(server: HttpServer) {
       for (const entry of [...subscriptions.values()]) {
         try {
           await authenticate(entry.socket.request.headers.cookie);
-        } catch {
-          entry.socket.emit('auth:expired');
-          entry.socket.disconnect(true);
+        } catch (error) {
+          if (error instanceof AppError && error.code === 'UNAUTHORIZED') {
+            entry.socket.emit('auth:expired');
+            entry.socket.disconnect(true);
+          } else throw error;
         }
       }
       const stale = await db.roomMember.findMany({
         where: {
           leftAt: null,
           connectionState: 'DISCONNECTED',
-          lastSeenAt: { lte: new Date(Date.now() - config.DISCONNECT_GRACE_MS) },
           room: { session: { phase: { not: 'ENDED' } } },
         },
       });
       for (const member of stale) {
+        if (reconnectDeadline(member).getTime() > Date.now()) continue;
         if (hasConnection(member.roomId, member.userId)) continue;
         const current = await db.room.findUnique({
           where: { id: member.roomId },
           include: { session: true },
         });
         if (current?.session.phase === 'ENDED') continue;
-        await db.$transaction((tx) =>
-          leaveMember(tx, member.roomId, member.userId, 'OWNER_DISCONNECTED'),
-        );
+        if (current?.ownerId === member.userId) await advanceRoom(member.roomId);
+        else
+          await db.$transaction((tx) =>
+            leaveMember(tx, member.roomId, member.userId, 'DISCONNECTED'),
+          );
         changed.add(member.roomId);
       }
       for (const roomId of changed) await broadcast(roomId, 'member:left');
     })
-      .catch(console.error)
+      .catch(reportUnavailable)
       .finally(() => {
         sweeping = false;
       });
@@ -306,11 +330,11 @@ export function createRealtime(server: HttpServer) {
           },
           data: { lastSeenAt: new Date(entry.lastSeenAt) },
         });
-      await db.commandReceipt.deleteMany({
-        where: { createdAt: { lt: new Date(Date.now() - 7 * 86400000) } },
-      });
-    }).catch(console.error);
+    }).catch(reportUnavailable);
   }, 15000);
+  const retention = setInterval(() => {
+    void serialize(() => retainData()).catch(reportUnavailable);
+  }, 60000);
   return {
     io,
     broadcast,
@@ -324,6 +348,7 @@ export function createRealtime(server: HttpServer) {
     close() {
       clearInterval(sweep);
       clearInterval(heartbeat);
+      clearInterval(retention);
       io.close();
     },
   };
