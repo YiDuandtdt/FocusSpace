@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
+import { clearDrafts } from './preferences';
 import type { User } from '@focusspace/shared';
 import { api, errorMessage, RequestError } from './api';
 type AuthState = {
@@ -35,14 +36,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     void refresh();
     const expired = () => {
+      clearDrafts();
       setUser(null);
       setCurrentRoomId(null);
     };
+    const changed = (event: StorageEvent) => {
+      if (event.key === 'focusspace:logout') {
+        expired();
+        void refresh();
+      }
+    };
     window.addEventListener('focusspace:unauthorized', expired);
-    return () => window.removeEventListener('focusspace:unauthorized', expired);
+    window.addEventListener('storage', changed);
+    return () => {
+      window.removeEventListener('focusspace:unauthorized', expired);
+      window.removeEventListener('storage', changed);
+    };
   }, [refresh]);
   const logout = async () => {
     await api('/auth/logout', { method: 'POST' });
+    clearDrafts();
+    try {
+      localStorage.setItem('focusspace:logout', String(Date.now()));
+    } catch {}
     setUser(null);
     setCurrentRoomId(null);
   };

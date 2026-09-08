@@ -71,6 +71,7 @@ model StudySession {
   startedAt    DateTime?
   endedAt      DateTime?
   endReason    String?
+  feedbackVersion Int @default(1)
   createdAt    DateTime @default(now())
   room         Room?
   intervals    PhaseInterval[]
@@ -107,6 +108,8 @@ model Task {
   userId      String
   user        User @relation(fields: [userId], references: [id])
   title       String
+  visibility  String @default("PRIVATE")
+  firstCompletedRound Int?
   completed   Boolean @default(false)
   completedAt DateTime?
   version     Int @default(1)
@@ -141,6 +144,7 @@ model StudyRecord {
   tasksTotal      Int
   studiedWith     Int
   @@unique([sessionId, userId])
+  @@index([userId, id])
 }
 model RoomMember {
   id              String @id @default(cuid())

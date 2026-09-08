@@ -35,8 +35,15 @@ export const taskDeleteSchema = z
   .object({ taskId: z.string().min(1).max(100), version: z.number().int().positive() })
   .strict();
 export const taskUpdateSchema = taskDeleteSchema
-  .extend({ title: taskCreateSchema.shape.title.optional(), completed: z.boolean().optional() })
-  .refine((v) => v.title !== undefined || v.completed !== undefined, '请提供修改内容');
+  .extend({
+    title: taskCreateSchema.shape.title.optional(),
+    completed: z.boolean().optional(),
+    visibility: z.enum(['PRIVATE', 'PUBLIC']).optional(),
+  })
+  .refine(
+    (v) => v.title !== undefined || v.completed !== undefined || v.visibility !== undefined,
+    '请提供修改内容',
+  );
 export const chatSendSchema = z
   .object({ content: z.string().trim().min(1, '请输入消息').max(500, '消息最多 500 字') })
   .strict();
@@ -81,6 +88,7 @@ export type Member = {
   tasksDone: number;
   tasksTotal: number;
   progressPercent: number | null;
+  publicTasks: Pick<Task, 'id' | 'title' | 'completed'>[];
 };
 export type RoomSnapshot = {
   room: { id: string; code: string; name: string; ownerId: string; capacity: number };
@@ -98,11 +106,14 @@ export type RoomSnapshot = {
   };
   members: Member[];
   myTasks: Task[];
+  recentMessages: ChatMessage[];
+  feedback: LearningFeedback;
   myPermissions: {
     isOwner: boolean;
     canParticipate: boolean;
     canConfigure: boolean;
     canStart: boolean;
+    startDisabledReason: string | null;
     canChat: boolean;
   };
   demoAvailable: boolean;
@@ -139,9 +150,11 @@ export type RoomCommand =
   | 'task:create'
   | 'task:update'
   | 'task:delete'
-  | 'chat:send';
+  | 'chat:send'
+  | 'reaction:send';
 
 export type Task = {
+  visibility: 'PRIVATE' | 'PUBLIC';
   id: string;
   title: string;
   completed: boolean;
@@ -172,6 +185,9 @@ export type SessionSummary = {
   endedAt: number;
   endReason: string | null;
   roomRoundsCompleted: number;
+  recordAvailable: boolean;
+  demoMode: boolean;
+  roomFocusSeconds: number | null;
   record: {
     focusSeconds: number;
     roundsCompleted: number;
@@ -180,4 +196,35 @@ export type SessionSummary = {
     progressPercent: number | null;
     studiedWith: number;
   };
+};
+
+export type LearningFeedback = {
+  roundNo: number;
+  roundFocusSeconds: number;
+  focusSeconds: number;
+  roundTasksDone: number | null;
+  roomFocusSeconds: number;
+  roomTasksDone: number;
+  roomTasksTotal: number;
+};
+export type LightEvent = {
+  eventId: string;
+  roomId: string;
+  sessionId: string;
+  userId: string;
+  symbol: '🌱' | '💪' | '☕' | '✓';
+  createdAt: number;
+};
+export type HistoryPage = {
+  items: SessionSummary[];
+  page: number;
+  total: number;
+  totals: {
+    sessions: number;
+    focusSeconds: number;
+    roundsCompleted: number;
+    tasksDone: number;
+    tasksTotal: number;
+  };
+  demoSessions: number;
 };

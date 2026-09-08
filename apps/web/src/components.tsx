@@ -80,7 +80,16 @@ export function Shell({ children }: { children: ReactNode }) {
               </button>
               <button
                 className="text-button"
-                onClick={() => void logout().catch((e) => setError(errorMessage(e)))}
+                onClick={() => {
+                  if (
+                    window.confirm(
+                      '退出登录会断开此登录会话的房间连接并清除本浏览器草稿。如果你是房主，且没有其他有效连接在宽限期内恢复，整个房间将结束；普通成员超时会释放座位。确认退出？',
+                    )
+                  ) {
+                    setEditing(false);
+                    void logout().catch((e) => setError(errorMessage(e)));
+                  }
+                }}
               >
                 退出登录
               </button>
@@ -91,7 +100,7 @@ export function Shell({ children }: { children: ReactNode }) {
         </div>
       </header>
       {error ? <Notice>{error}</Notice> : null}
-      <main>{children}</main>
+      <main key={user?.id ?? 'anonymous'}>{children}</main>
       <footer className="footer">
         <span>FocusSpace</span>
         <span>Study alone, together.</span>

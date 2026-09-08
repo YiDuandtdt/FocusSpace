@@ -1,17 +1,21 @@
 import { useEffect, useRef, useState } from 'react';
 
+import { useAuth } from '../../auth';
+import { readPreferences, savePreferences } from '../../preferences';
+
 export function AmbientAudio() {
+  const { user } = useAuth();
   const audio = useRef<HTMLAudioElement>(null);
   const alive = useRef(true);
   const [playing, setPlaying] = useState(false);
   const [pending, setPending] = useState(false);
-  const [volume, setVolume] = useState(35);
+  const [volume, setVolume] = useState(() => readPreferences(user!.id).volume);
   const [error, setError] = useState('');
   useEffect(() => {
     alive.current = true;
     const element = audio.current!;
     element.src = '/audio/window-rain.wav';
-    element.volume = 0.35;
+    element.volume = readPreferences(user!.id).volume / 100;
     return () => {
       alive.current = false;
       element.pause();
@@ -80,6 +84,8 @@ export function AmbientAudio() {
           onChange={(event) => {
             const value = Number(event.target.value);
             setVolume(value);
+            if (!savePreferences(user!.id, { volume: value }))
+              setError('音量已调整，但浏览器未允许保存偏好。');
             if (audio.current) audio.current.volume = value / 100;
           }}
         />

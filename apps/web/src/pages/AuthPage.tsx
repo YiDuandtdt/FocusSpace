@@ -11,7 +11,10 @@ export function AuthPage({ register = false }: { register?: boolean }) {
   const [params] = useSearchParams();
   const returnTo = params.get('next');
   const next =
-    returnTo && /^\/(?:rooms\/[^/?#\\]+|sessions\/[^/?#\\]+\/summary)$/.test(returnTo)
+    returnTo &&
+    /^\/(?:history|join\/[A-HJ-NP-Z2-9]{6}|rooms\/[^/?#\\]+|sessions\/[^/?#\\]+\/summary)$/.test(
+      returnTo,
+    )
       ? returnTo
       : '/';
   const [username, setUsername] = useState('');

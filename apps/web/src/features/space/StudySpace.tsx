@@ -3,13 +3,16 @@ import { Avatar } from '../../components';
 import { memberLabels, memberSymbols, SEATS } from './memberPresentation';
 import type { SceneState, StudyRoomScene } from './StudyRoomScene';
 
+import { readPreferences, savePreferences } from '../../preferences';
+
 export const StudySpace = memo(function StudySpace(props: SceneState) {
   const host = useRef<HTMLDivElement>(null);
   const scene = useRef<StudyRoomScene | null>(null);
   const latest = useRef(props);
   const [failed, setFailed] = useState(false);
   const [loaded, setLoaded] = useState(false);
-  const [cards, setCards] = useState(false);
+  const [cards, setCards] = useState(() => readPreferences(props.userId ?? '').cards);
+  const [preferenceError, setPreferenceError] = useState('');
   const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
@@ -56,12 +59,21 @@ export const StudySpace = memo(function StudySpace(props: SceneState) {
   const fallback = cards || failed || !loaded;
   return (
     <div className={`study-space ${fallback ? 'show-cards' : ''}`}>
+      {preferenceError ? <p role="status">{preferenceError}</p> : null}
       <div className="space-view-controls">
         <div>
           <span className="eyebrow">THE READING ROOM</span>
           <strong>窗边自习室</strong>
         </div>
-        <button className="text-button" onClick={() => setCards(!cards)} aria-pressed={cards}>
+        <button
+          className="text-button"
+          onClick={() => {
+            setCards(!cards);
+            if (!savePreferences(props.userId ?? '', { cards: !cards }))
+              setPreferenceError('视图已切换，但浏览器未允许保存偏好。');
+          }}
+          aria-pressed={cards}
+        >
           {cards ? '打开 3D 空间' : '使用座位卡片'}
         </button>
       </div>

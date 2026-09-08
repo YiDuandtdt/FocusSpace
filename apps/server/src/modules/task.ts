@@ -19,6 +19,7 @@ export async function taskCommand(
         throw new AppError('ROOM_ENDED', '共学已结束，任务已冻结', 409);
       if (member.connectionState !== 'CONNECTED')
         throw new AppError('CONFLICT', '请等待连接恢复', 409);
+      let completion = false;
       if (type === 'task:create') {
         const input = taskCreateSchema.parse(payload);
         if ((await tx.task.count({ where: { sessionId: room.sessionId, userId } })) >= 100)
@@ -39,10 +40,14 @@ export async function taskCommand(
           await tx.task.delete({ where: { id: task.id, version: input.version } });
         else {
           const update = taskUpdateSchema.parse(payload);
+          completion =
+            update.completed === true && !task.completed && task.firstCompletedRound === null;
           await tx.task.update({
             where: { id: task.id, version: input.version },
             data: {
               title: update.title,
+              visibility: update.visibility,
+              firstCompletedRound: completion ? room.session.roundNo : undefined,
               completed: update.completed,
               version: { increment: 1 },
               completedAt:
@@ -56,7 +61,7 @@ export async function taskCommand(
         }
       }
       await bump(tx, roomId);
-      return { roomId };
+      return { roomId, completion };
     }),
   );
 }

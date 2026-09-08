@@ -8,6 +8,7 @@ import { Avatar, Notice, RhythmFields } from '../components';
 import { useRoom } from '../state/useRoom';
 import { PhaseTimer, TaskPanel, ChatPanel, SummaryPanel } from '../features/SessionPanels';
 import { StudySpace } from '../features/space/StudySpace';
+import { Encouragement } from '../features/Encouragement';
 import { AmbientAudio } from '../features/audio/AmbientAudio';
 import { memberLabels as stateLabels } from '../features/space/memberPresentation';
 
@@ -15,13 +16,16 @@ export function RoomPage() {
   const { roomId = '' } = useParams();
   const { user, refresh } = useAuth();
   const navigate = useNavigate();
-  const { data, status, error, removed, command, messages, serverNow, syncNow } = useRoom(roomId);
+  const { data, status, error, removed, command, messages, lights, serverNow, syncNow } = useRoom(
+    roomId,
+    user!.id,
+  );
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState('');
   const [copied, setCopied] = useState(false);
   const [confirmLeave, setConfirmLeave] = useState(false);
   async function perform(type: RoomCommand, payload: unknown = {}) {
-    if (busy) return;
+    if (busy) return false;
     setBusy(true);
     setActionError('');
     try {
@@ -31,8 +35,10 @@ export function RoomPage() {
         await refresh();
         navigate('/');
       }
+      return true;
     } catch (e) {
       setActionError(errorMessage(e));
+      return false;
     } finally {
       setBusy(false);
     }
@@ -130,6 +136,22 @@ export function RoomPage() {
           </small>
         </button>
       </div>
+      {!ended ? (
+        <button
+          className="text-button"
+          onClick={() =>
+            void copyText(window.location.origin + '/join/' + data.room.code)
+              .then(() => setActionError('邀请链接已复制'))
+              .catch(() =>
+                setActionError(
+                  '请复制邀请链接：' + window.location.origin + '/join/' + data.room.code,
+                ),
+              )
+          }
+        >
+          复制邀请链接 ↗
+        </button>
+      ) : null}
       {actionError ? <Notice>{actionError}</Notice> : null}
       {data.summary ? <SummaryPanel summary={data.summary} /> : null}
       <nav className="room-shortcuts" aria-label="房间快捷入口">
@@ -163,6 +185,24 @@ export function RoomPage() {
               phase={data.session.phase}
               userId={user?.id}
             />
+            <div className="light-feedback" aria-live="off">
+              {lights.map((light) => (
+                <span key={light.eventId} className="light-symbol">
+                  {light.symbol} {data.members.find((m) => m.userId === light.userId)?.nickname}
+                  {light.symbol === '✓' ? ' 完成了一个任务' : ''}
+                </span>
+              ))}
+            </div>
+            {!lobby && !ended ? <Encouragement disabled={!writable} command={command} /> : null}
+            {lobby && data.myPermissions.isOwner ? (
+              <p className="muted" role="status">
+                {status !== 'online'
+                  ? '等待实时连接恢复'
+                  : busy
+                    ? '正在保存操作…'
+                    : (data.myPermissions.startDisabledReason ?? '成员已准备，可以开始共学。')}
+              </p>
+            ) : null}
             {!ended ? <AmbientAudio key={`audio-${roomId}`} /> : null}
             <div className="lobby-controls">
               <div>
@@ -215,10 +255,23 @@ export function RoomPage() {
         </div>
         <aside className="room-sidebar">
           <div id="room-tasks">
-            <TaskPanel tasks={data.myTasks} disabled={!writable} ended={ended} command={command} />
+            <TaskPanel
+              key={user!.id + roomId}
+              roomId={roomId}
+              tasks={data.myTasks}
+              disabled={!writable}
+              ended={ended}
+              command={command}
+            />
           </div>
           <div id="room-chat">
-            <ChatPanel data={data} messages={messages} disabled={!writable} command={command} />
+            <ChatPanel
+              key={user!.id + roomId}
+              data={data}
+              messages={messages}
+              disabled={!writable}
+              command={command}
+            />
           </div>
           <section className="panel members-panel">
             <div className="panel-heading">
@@ -227,6 +280,16 @@ export function RoomPage() {
                 {data.members.length}/{data.room.capacity}
               </span>
             </div>
+            <p className="muted">
+              房间总体任务 {data.feedback.roomTasksDone}/{data.feedback.roomTasksTotal} ·{' '}
+              {data.feedback.roomTasksTotal
+                ? Math.round((data.feedback.roomTasksDone / data.feedback.roomTasksTotal) * 100) +
+                  '%'
+                : '未设置任务'}
+              <br />
+              共同专注 {data.feedback.roomFocusSeconds} 秒 · 至少两人同时
+              Focus，包含已离开成员的实际参与
+            </p>
             <ul className="member-list">
               {data.members.map((member) => (
                 <li key={member.userId}>
@@ -248,6 +311,15 @@ export function RoomPage() {
                         : '未设置任务'}
                     </span>
                   </div>
+                  {status === 'online' && member.publicTasks.length ? (
+                    <div className="public-tasks">
+                      {member.publicTasks.map((task) => (
+                        <span className="public-task" key={task.id}>
+                          {task.completed ? '✓' : '○'} {task.title}
+                        </span>
+                      ))}
+                    </div>
+                  ) : null}
                   <span className={`member-state state-${member.status}`}>
                     {stateLabels[member.status]}
                   </span>
@@ -325,15 +397,14 @@ function RhythmPanel({
 }: {
   data: RoomSnapshot;
   disabled: boolean;
-  onSave: (payload: { focusSeconds: number; breakSeconds: number }) => Promise<void>;
+  onSave: (payload: { focusSeconds: number; breakSeconds: number }) => Promise<boolean>;
 }) {
   const [editing, setEditing] = useState(false);
   const [focus, setFocus] = useState(data.session.focusSeconds / 60);
   const [rest, setRest] = useState(data.session.breakSeconds / 60);
   const save = async (event: FormEvent) => {
     event.preventDefault();
-    await onSave({ focusSeconds: focus * 60, breakSeconds: rest * 60 });
-    setEditing(false);
+    if (await onSave({ focusSeconds: focus * 60, breakSeconds: rest * 60 })) setEditing(false);
   };
   return (
     <section className="panel rhythm-panel">

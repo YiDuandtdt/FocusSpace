@@ -5,14 +5,18 @@ import { useAuth } from '../auth';
 import { roomRequest, errorMessage } from '../api';
 import { Notice, RhythmFields } from '../components';
 
+import { readPreferences, savePreferences } from '../preferences';
+import { HistoryPage } from './HistoryPage';
+
 export function HomePage() {
   const { user, currentRoomId, refresh } = useAuth();
   const navigate = useNavigate();
   const [name, setName] = useState('');
-  const [focus, setFocus] = useState(25);
-  const [rest, setRest] = useState(5);
+  const [focus, setFocus] = useState(() => readPreferences(user!.id).focusSeconds / 60);
+  const [rest, setRest] = useState(() => readPreferences(user!.id).breakSeconds / 60);
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState('');
+  const [saved, setSaved] = useState('');
   const [error, setError] = useState('');
   useEffect(() => {
     void refresh();
@@ -101,6 +105,31 @@ export function HomePage() {
             />
           </label>
           <RhythmFields focus={focus} rest={rest} setFocus={setFocus} setRest={setRest} />
+          <button
+            type="button"
+            className="text-button"
+            onClick={() => {
+              if (
+                focus >= 1 &&
+                focus <= 180 &&
+                rest >= 1 &&
+                rest <= 60 &&
+                Number.isInteger(focus) &&
+                Number.isInteger(rest)
+              )
+                setSaved(
+                  savePreferences(user!.id, { focusSeconds: focus * 60, breakSeconds: rest * 60 })
+                    ? '默认节奏已保存，仅用于新建房间。'
+                    : '浏览器未允许保存偏好。',
+                );
+              else setSaved('请输入范围内的整数分钟。');
+            }}
+          >
+            保存为默认节奏
+          </button>
+          <p className="muted" role="status">
+            {saved || '偏好保存在当前浏览器、按账号隔离；加入房间沿用房主节奏。'}
+          </p>
           <button className="button primary full" disabled={!!busy || !!currentRoomId}>
             {busy === 'create' ? '正在创建…' : '创建房间'}
             <span aria-hidden="true">↗</span>
@@ -142,6 +171,7 @@ export function HomePage() {
           </aside>
         </div>
       </section>
+      <HistoryPage recent />
     </div>
   );
 }

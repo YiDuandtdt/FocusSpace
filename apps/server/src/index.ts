@@ -25,7 +25,7 @@ import {
 } from './modules/room.js';
 import { createRealtime } from './realtime/index.js';
 import { advanceRoom, recoverSessions } from './modules/session.js';
-import { summary } from './modules/record.js';
+import { summary, history } from './modules/record.js';
 import { retainData } from './modules/retention.js';
 
 await db.$connect();
@@ -140,6 +140,9 @@ app.post('/api/rooms/join', async (req, res) => {
   const input = joinRoomSchema.parse(req.body);
   const result = await serialize(async () => {
     const auth = await authenticate(req.headers.cookie);
+    const target = await db.room.findUnique({ where: { code: input.code }, select: { id: true } });
+    if (target && (await advanceRoom(target.id)))
+      await realtime.broadcast(target.id, 'phase:change');
     const result = await joinRoom(auth.userId, input);
     await realtime.broadcast(result.roomId, 'member:joined');
     return result;
@@ -153,6 +156,16 @@ app.get('/api/rooms/:id/snapshot', async (req, res) => {
     if (await advanceRoom(req.params.id as string))
       await realtime.broadcast(req.params.id as string, 'phase:change');
     return snapshot(req.params.id as string, auth.userId);
+  });
+  res.json(result);
+});
+app.get('/api/users/me/history', async (req, res) => {
+  const page = Number(req.query.page ?? 1);
+  if (!Number.isSafeInteger(page) || page < 1 || page > 100000)
+    throw new AppError('VALIDATION_ERROR', '页码无效', 400);
+  const result = await serialize(async () => {
+    const auth = await authenticate(req.headers.cookie);
+    return history(auth.userId, page);
   });
   res.json(result);
 });

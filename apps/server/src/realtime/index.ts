@@ -26,6 +26,8 @@ import {
 import { advanceRoom, reconnectDeadline, sessionCommand } from '../modules/session.js';
 import { retainData } from '../modules/retention.js';
 import { taskCommand } from '../modules/task.js';
+import { sendReaction } from '../modules/reaction.js';
+import type { LightEvent } from '@focusspace/shared';
 import { sendChat } from '../modules/chat.js';
 
 export function createRealtime(server: HttpServer) {
@@ -50,6 +52,7 @@ export function createRealtime(server: HttpServer) {
     pingInterval: 15000,
     pingTimeout: 10000,
   });
+  const emittedLights = new Map<string, number>();
   const subscriptions = new Map<
     string,
     { socket: Socket; userId: string; roomId: string; authId: string; lastSeenAt: number }
@@ -157,6 +160,7 @@ export function createRealtime(server: HttpServer) {
       'task:update',
       'task:delete',
       'chat:send',
+      'reaction:send',
     ];
     for (const type of commands)
       socket.on(type, (raw: unknown, respond?: (result: Ack) => void) => {
@@ -183,6 +187,7 @@ export function createRealtime(server: HttpServer) {
             });
             if (await advanceRoom(input.roomId)) await broadcast(input.roomId, 'phase:change');
             let message: ChatMessage | undefined;
+            let light: LightEvent | undefined;
             if (type === 'room:join' || type === 'room:sync') {
               await requireMember(input.roomId, auth.userId, db, true);
               const previous = subscriptions.get(socket.id);
@@ -213,7 +218,29 @@ export function createRealtime(server: HttpServer) {
                 z.object({}).strict().parse(input.payload);
                 await sessionCommand(auth.userId, input.roomId, requestId, type);
               } else if (type.startsWith('task:')) {
-                await taskCommand(auth.userId, input.roomId, requestId, type, input.payload);
+                const result = await taskCommand(
+                  auth.userId,
+                  input.roomId,
+                  requestId,
+                  type,
+                  input.payload,
+                );
+                if (result.completion) {
+                  const receipt = await db.commandReceipt.findUniqueOrThrow({
+                    where: { userId_requestId: { userId: auth.userId, requestId } },
+                  });
+                  const room = await db.room.findUniqueOrThrow({ where: { id: input.roomId } });
+                  light = {
+                    eventId: requestId,
+                    roomId: input.roomId,
+                    sessionId: room.sessionId,
+                    userId: auth.userId,
+                    symbol: '✓',
+                    createdAt: receipt.createdAt.getTime(),
+                  };
+                }
+              } else if (type === 'reaction:send') {
+                light = await sendReaction(auth.userId, input.roomId, requestId, input.payload);
               } else if (type === 'chat:send') {
                 message = await sendChat(auth.userId, input.roomId, requestId, input.payload);
               } else {
@@ -232,6 +259,17 @@ export function createRealtime(server: HttpServer) {
               }
             }
             await broadcast(input.roomId, type, message);
+            if (light && Date.now() - light.createdAt < 4000 && !emittedLights.has(light.eventId)) {
+              emittedLights.set(light.eventId, light.createdAt);
+              for (const entry of subscriptions.values())
+                if (entry.roomId === input.roomId && entry.socket.connected) {
+                  await authenticate(entry.socket.request.headers.cookie);
+                  await requireMember(input.roomId, entry.userId);
+                  entry.socket.emit('room:light', light);
+                }
+            }
+            for (const [id, at] of emittedLights)
+              if (Date.now() - at > 10000) emittedLights.delete(id);
             const data =
               type === 'member:leave' ? undefined : await snapshot(input.roomId, auth.userId);
             respond({ requestId, ok: true, revision: data?.revision, data });

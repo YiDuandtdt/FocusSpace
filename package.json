@@ -26,7 +26,8 @@
     "test:flow": "tsx scripts/verify-flow.ts",
     "test:session": "tsx scripts/verify-session.ts",
     "test:space": "tsx scripts/verify-space.ts",
-    "audio:generate": "node scripts/generate-ambience.mjs"
+    "audio:generate": "node scripts/generate-ambience.mjs",
+    "test:feedback": "tsx scripts/verify-feedback.ts"
   },
   "devDependencies": {
     "@playwright/test": "1.55.0",

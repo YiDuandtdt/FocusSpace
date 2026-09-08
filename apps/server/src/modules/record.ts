@@ -1,5 +1,5 @@
 import type { Prisma } from '@prisma/client';
-import type { SessionSummary } from '@focusspace/shared';
+import type { SessionSummary, LearningFeedback, HistoryPage } from '@focusspace/shared';
 import { db } from '../db.js';
 import { AppError } from '../errors.js';
 
@@ -105,6 +105,9 @@ export async function summary(sessionId: string, userId: string): Promise<Sessio
     startedAt: session.startedAt?.getTime() ?? null,
     endedAt: session.endedAt!.getTime(),
     endReason: session.endReason,
+    recordAvailable: !!record,
+    demoMode: session.focusSeconds === 45 && session.breakSeconds === 15,
+    roomFocusSeconds: record ? (await learningFeedback(sessionId, userId)).roomFocusSeconds : null,
     roomRoundsCompleted: phases.filter(
       (p) => p.endAt!.getTime() - p.startAt.getTime() === session.focusSeconds * 1000,
     ).length,
@@ -117,6 +120,117 @@ export async function summary(sessionId: string, userId: string): Promise<Sessio
       progressPercent: values.tasksTotal
         ? Math.round((values.tasksDone / values.tasksTotal) * 100)
         : null,
+    },
+  };
+}
+
+// Sweep merged intervals per user: three people still contribute one wall-clock second.
+export function commonSeconds(users: Span[][]): number {
+  const events = new Map<number, number>();
+  for (const spans of users)
+    for (const [a, b] of mergeSpans(spans)) {
+      events.set(a, (events.get(a) ?? 0) + 1);
+      events.set(b, (events.get(b) ?? 0) - 1);
+    }
+  let active = 0,
+    previous = 0,
+    total = 0;
+  for (const [at, delta] of [...events].sort((a, b) => a[0] - b[0])) {
+    if (active >= 2) total += at - previous;
+    active += delta;
+    previous = at;
+  }
+  return Math.floor(total / 1000);
+}
+export async function learningFeedback(
+  sessionId: string,
+  userId: string,
+): Promise<LearningFeedback> {
+  const [session, phases, presence, tasks] = await Promise.all([
+    db.studySession.findUniqueOrThrow({ where: { id: sessionId } }),
+    db.phaseInterval.findMany({
+      where: { sessionId, phase: 'FOCUS' },
+      orderBy: { startAt: 'asc' },
+    }),
+    db.presenceInterval.findMany({ where: { sessionId } }),
+    db.task.findMany({
+      where: { sessionId },
+      select: { userId: true, completed: true, firstCompletedRound: true },
+    }),
+  ]);
+  const at = session.endedAt?.getTime() ?? Date.now();
+  const focus: Span[] = phases.map((p) => [
+    p.startAt.getTime(),
+    Math.min(p.endAt?.getTime() ?? at, at),
+  ]);
+  const users = [...new Set(presence.map((p) => p.userId))];
+  const spans = new Map(
+    users.map((id) => [
+      id,
+      intersect(
+        mergeSpans(
+          presence
+            .filter((p) => p.userId === id)
+            .map((p) => [p.startAt.getTime(), Math.min(p.endAt?.getTime() ?? at, at)]),
+        ),
+        focus,
+      ),
+    ]),
+  );
+  const own = spans.get(userId) ?? [];
+  const round: Span[] = phases
+    .filter((p) => p.roundNo === session.roundNo)
+    .map((p) => [p.startAt.getTime(), Math.min(p.endAt?.getTime() ?? at, at)]);
+  const seconds = (v: Span[]) => Math.floor(v.reduce((n, [a, b]) => n + b - a, 0) / 1000);
+  return {
+    roundNo: session.roundNo,
+    focusSeconds: seconds(own),
+    roundFocusSeconds: seconds(intersect(own, round)),
+    roundTasksDone: session.feedbackVersion
+      ? tasks.filter(
+          (t) => t.userId === userId && t.completed && t.firstCompletedRound === session.roundNo,
+        ).length
+      : null,
+    roomFocusSeconds: commonSeconds([...spans.values()]),
+    roomTasksDone: tasks.filter((t) => t.completed).length,
+    roomTasksTotal: tasks.length,
+  };
+}
+export async function history(userId: string, page: number): Promise<HistoryPage> {
+  const where = { userId, session: { phase: 'ENDED' as const } };
+  const formal = {
+    ...where,
+    session: { phase: 'ENDED' as const, NOT: { focusSeconds: 45, breakSeconds: 15 } },
+  };
+  const [records, total, aggregate, demoSessions] = await Promise.all([
+    db.studyRecord.findMany({
+      where,
+      orderBy: [{ session: { endedAt: 'desc' } }, { id: 'desc' }],
+      skip: (page - 1) * 10,
+      take: 10,
+      select: { sessionId: true },
+    }),
+    db.studyRecord.count({ where }),
+    db.studyRecord.aggregate({
+      where: formal,
+      _count: true,
+      _sum: { focusSeconds: true, roundsCompleted: true, tasksDone: true, tasksTotal: true },
+    }),
+    db.studyRecord.count({
+      where: { userId, session: { phase: 'ENDED', focusSeconds: 45, breakSeconds: 15 } },
+    }),
+  ]);
+  return {
+    items: await Promise.all(records.map((r) => summary(r.sessionId, userId))),
+    page,
+    total,
+    demoSessions,
+    totals: {
+      sessions: aggregate._count,
+      focusSeconds: aggregate._sum.focusSeconds ?? 0,
+      roundsCompleted: aggregate._sum.roundsCompleted ?? 0,
+      tasksDone: aggregate._sum.tasksDone ?? 0,
+      tasksTotal: aggregate._sum.tasksTotal ?? 0,
     },
   };
 }

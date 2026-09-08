@@ -7,7 +7,8 @@ import { digest } from './auth.js';
 import { config } from '../config.js';
 import { openPresence, closePresence } from './presence.js';
 import { finishSession, reconnectDeadline } from './session.js';
-import { summary } from './record.js';
+import { recentMessages } from './chat.js';
+import { summary, learningFeedback } from './record.js';
 
 type Tx = Prisma.TransactionClient;
 const include = {
@@ -137,7 +138,7 @@ export const bump = (tx: Tx, roomId: string) =>
 export async function snapshot(roomId: string, userId: string): Promise<RoomSnapshot> {
   const { room, member } = await requireMember(roomId, userId, db, true);
   const ended = room.session.phase === 'ENDED';
-  const [tasks, myTasks, result] = await Promise.all([
+  const [tasks, myTasks, result, messages, feedback, publicTasks] = await Promise.all([
     db.task.findMany({
       where: { sessionId: room.sessionId },
       select: { userId: true, completed: true },
@@ -145,9 +146,22 @@ export async function snapshot(roomId: string, userId: string): Promise<RoomSnap
     db.task.findMany({
       where: { sessionId: room.sessionId, userId },
       orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
-      select: { id: true, title: true, completed: true, completedAt: true, version: true },
+      select: {
+        id: true,
+        title: true,
+        completed: true,
+        completedAt: true,
+        version: true,
+        visibility: true,
+      },
     }),
     ended ? summary(room.sessionId, userId) : Promise.resolve(null),
+    recentMessages(room.sessionId),
+    learningFeedback(room.sessionId, userId),
+    db.task.findMany({
+      where: { sessionId: room.sessionId, visibility: 'PUBLIC' },
+      select: { id: true, userId: true, title: true, completed: true },
+    }),
   ]);
   const retained = room.members.filter((m) => !m.leftAt);
   return {
@@ -197,6 +211,9 @@ export async function snapshot(roomId: string, userId: string): Promise<RoomSnap
           isOwner: m.userId === room.ownerId,
           joinedAt: m.joinedAt.getTime(),
           lateJoin: !!room.session.startedAt && m.joinedAt > room.session.startedAt,
+          publicTasks: publicTasks
+            .filter((t) => t.userId === m.userId)
+            .map(({ id, title, completed }) => ({ id, title, completed })),
           tasksDone: tasks.filter((t) => t.userId === m.userId && t.completed).length,
           tasksTotal: tasks.filter((t) => t.userId === m.userId).length,
           progressPercent: tasks.some((t) => t.userId === m.userId)
@@ -208,13 +225,31 @@ export async function snapshot(roomId: string, userId: string): Promise<RoomSnap
             : null,
         }),
       ),
-    myTasks: myTasks.map((t) => ({ ...t, completedAt: t.completedAt?.getTime() ?? null })),
+    recentMessages: messages,
+    feedback,
+    myTasks: myTasks.map((t) => ({
+      ...t,
+      visibility: t.visibility as 'PRIVATE' | 'PUBLIC',
+      completedAt: t.completedAt?.getTime() ?? null,
+    })),
     demoAvailable: config.DEMO_MODE === 'true',
     summary: result,
     myPermissions: {
       isOwner: room.ownerId === userId,
       canParticipate: !ended && !member.leftAt,
       canConfigure: room.ownerId === userId && room.session.phase === 'LOBBY' && !member.leftAt,
+      startDisabledReason:
+        room.ownerId !== userId
+          ? '由房主开始共学'
+          : room.session.phase !== 'LOBBY'
+            ? '共学已开始或结束'
+            : retained.some((m) => m.connectionState !== 'CONNECTED')
+              ? '等待所有成员恢复连接'
+              : retained.some((m) => m.afk)
+                ? '等待暂离成员回来'
+                : retained.some((m) => !m.ready)
+                  ? '请所有成员（含房主）先准备'
+                  : null,
       canStart:
         room.ownerId === userId &&
         room.session.phase === 'LOBBY' &&

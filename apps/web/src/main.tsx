@@ -6,6 +6,8 @@ import { Shell, Notice } from './components';
 import { AuthPage } from './pages/AuthPage';
 import { HomePage } from './pages/HomePage';
 import { RoomPage } from './pages/RoomPage';
+import { HistoryPage } from './pages/HistoryPage';
+import { InvitePage } from './pages/InvitePage';
 import { SummaryPage } from './pages/SummaryPage';
 import './styles.css';
 import './features/space/space.css';
@@ -44,7 +46,23 @@ function App() {
               </button>
             </Notice>
           ) : null}
-          <Routes>
+          <Routes key={user?.id ?? 'anonymous'}>
+            <Route
+              path="/history"
+              element={
+                <Protected>
+                  <HistoryPage />
+                </Protected>
+              }
+            />
+            <Route
+              path="/join/:code"
+              element={
+                <Protected>
+                  <InvitePage />
+                </Protected>
+              }
+            />
             <Route
               path="/sessions/:sessionId/summary"
               element={

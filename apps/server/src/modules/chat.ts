@@ -40,3 +40,21 @@ export async function sendChat(
     }),
   );
 }
+
+export async function recentMessages(sessionId: string): Promise<ChatMessage[]> {
+  const messages = await db.chatMessage.findMany({
+    where: { sessionId, createdAt: { gte: new Date(Date.now() - 86400000) } },
+    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    take: 50,
+    include: { user: { select: { nickname: true } } },
+  });
+  return messages
+    .reverse()
+    .map((m) => ({
+      id: m.id,
+      userId: m.userId,
+      nickname: m.user.nickname,
+      content: m.content,
+      createdAt: m.createdAt.getTime(),
+    }));
+}
