@@ -1,3 +1,4 @@
+import { createRequestId } from '../requestId';
 import { useEffect, useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth';
@@ -28,9 +29,9 @@ export function HomePage() {
               name,
               focusSeconds: focus * 60,
               breakSeconds: rest * 60,
-              requestId: crypto.randomUUID(),
+              requestId: createRequestId(),
             }
-          : { code, requestId: crypto.randomUUID() };
+          : { code, requestId: createRequestId() };
       const result = await roomRequest(mode === 'create' ? '/rooms' : '/rooms/join', body);
       await refresh();
       navigate(`/rooms/${result.roomId}`);

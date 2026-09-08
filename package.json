@@ -19,6 +19,7 @@
     "db:deploy": "node --env-file=.env scripts/init-db.mjs && prisma migrate deploy",
     "db:backup": "node --env-file=.env scripts/backup-db.mjs",
     "demo:init": "node --env-file=.env scripts/init-demo.mjs",
+    "test:lan": "node scripts/verify-lan-http.mjs",
     "test:delivery": "tsx scripts/verify-delivery.ts",
     "db:migrate": "prisma migrate dev",
     "db:studio": "prisma studio",

@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import type { RoomCommand, RoomSnapshot } from '@focusspace/shared';
 import { useAuth } from '../auth';
 import { errorMessage } from '../api';
+import { copyText } from '../clipboard';
 import { Avatar, Notice, RhythmFields } from '../components';
 import { useRoom } from '../state/useRoom';
 import { PhaseTimer, TaskPanel, ChatPanel, SummaryPanel } from '../features/SessionPanels';
@@ -112,8 +113,9 @@ export function RoomPage() {
         <button
           className="invite-code"
           onClick={() => {
-            void navigator.clipboard
-              .writeText(data.room.code)
+            setActionError('');
+            setCopied(false);
+            void copyText(data.room.code)
               .then(() => {
                 setCopied(true);
                 setTimeout(() => setCopied(false), 2500);

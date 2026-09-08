@@ -33,9 +33,11 @@ export function createRealtime(server: HttpServer) {
     cors: { origin: [...config.origins], credentials: true },
     allowRequest: (req, done) => {
       // Browsers omit Origin on same-origin polling GETs. Fetch Metadata plus
-      // the same-origin Referer validates that transport without opening CORS.
+      // the allowed Referer validates that transport without opening CORS.
+      // Plain HTTP LAN browsers also omit Fetch Metadata headers.
       let origin = req.headers.origin;
-      if (!origin && req.headers['sec-fetch-site'] === 'same-origin' && req.headers.referer) {
+      const site = req.headers['sec-fetch-site'];
+      if (!origin && (!site || site === 'same-origin') && req.headers.referer) {
         try {
           origin = new URL(req.headers.referer).origin;
         } catch {

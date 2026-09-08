@@ -1,3 +1,4 @@
+import { createRequestId } from '../requestId';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { io, type Socket } from 'socket.io-client';
 import type {
@@ -80,7 +81,7 @@ export function useRoom(roomId: string) {
         .timeout(8000)
         .emit(
           type,
-          { requestId: crypto.randomUUID(), roomId, payload: {} },
+          { requestId: createRequestId(), roomId, payload: {} },
           (error: Error | null, ack: Ack) => {
             syncing = false;
             if (!alive) return;
@@ -180,7 +181,7 @@ export function useRoom(roomId: string) {
     // A failed acknowledgement can follow a committed write. Manual retry must
     // use the same receipt, including chat (which is never auto-sent on reconnect).
     const input = pendingCommands.current.get(key) ?? {
-      requestId: crypto.randomUUID(),
+      requestId: createRequestId(),
       roomId,
       payload,
     };
