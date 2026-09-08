@@ -1,7 +1,7 @@
 import type { Prisma } from '@prisma/client';
 import { db } from '../db.js';
 import { AppError } from '../errors.js';
-import { bump, receipt, requireMember } from './room.js';
+import { bump, receipt, requireMember, leaveMember } from './room.js';
 import { openPresence, closePresence } from './presence.js';
 import { saveRecords } from './record.js';
 import { config } from '../config.js';
@@ -71,8 +71,8 @@ async function reconcileRoom(tx: Tx, roomId: string, at: Date) {
   if (!room || room.session.phase === 'ENDED') return false;
   const owner = room.members.find((member) => member.userId === room.ownerId);
   if (owner?.connectionState === 'DISCONNECTED' && reconnectDeadline(owner) <= at) {
-    // End on the persisted deadline, even if the scheduler/database was unavailable.
-    await finishSession(tx, roomId, 'OWNER_DISCONNECTED', reconnectDeadline(owner));
+    await leaveMember(tx, roomId, owner.userId, 'OWNER_DISCONNECTED', reconnectDeadline(owner));
+    await advanceSession(tx, roomId, at);
     return true;
   }
   return advanceSession(tx, roomId, at);

@@ -17,6 +17,7 @@ import { config } from '../config.js';
 import { AppError, publicError } from '../errors.js';
 import { authenticate } from '../modules/auth.js';
 import {
+  ownerCommand,
   leaveMember,
   mutateMember,
   requireMember,
@@ -154,6 +155,8 @@ export function createRealtime(server: HttpServer) {
       'member:afk',
       'member:leave',
       'room:configure',
+      'room:transfer',
+      'room:visibility',
       'session:start',
       'session:end',
       'task:create',
@@ -183,7 +186,7 @@ export function createRealtime(server: HttpServer) {
             if (entry) entry.lastSeenAt = Date.now();
             await requireMember(input.roomId, auth.userId, db, true).catch((error) => {
               // Leave retries remain valid after the member has left.
-              if (type !== 'member:leave') throw error;
+              if (type !== 'member:leave' && type !== 'room:transfer') throw error;
             });
             if (await advanceRoom(input.roomId)) await broadcast(input.roomId, 'phase:change');
             let message: ChatMessage | undefined;
@@ -212,9 +215,28 @@ export function createRealtime(server: HttpServer) {
                 lastSeenAt: Date.now(),
               });
             } else {
-              if (type !== 'member:leave' && subscriptions.get(socket.id)?.roomId !== input.roomId)
+              if (
+                type !== 'member:leave' &&
+                type !== 'room:transfer' &&
+                subscriptions.get(socket.id)?.roomId !== input.roomId
+              )
                 throw new AppError('FORBIDDEN', '请先连接房间', 403);
-              if (type === 'session:start' || type === 'session:end') {
+              if (type === 'room:transfer' || type === 'room:visibility') {
+                const payload =
+                  type === 'room:transfer'
+                    ? z
+                        .object({
+                          targetId: z.string().min(1).max(100),
+                          leave: z.boolean().default(false),
+                        })
+                        .strict()
+                        .parse(input.payload)
+                    : z
+                        .object({ visibility: z.enum(['PRIVATE', 'PUBLIC']) })
+                        .strict()
+                        .parse(input.payload);
+                await ownerCommand(auth.userId, input.roomId, requestId, type, payload);
+              } else if (type === 'session:start' || type === 'session:end') {
                 z.object({}).strict().parse(input.payload);
                 await sessionCommand(auth.userId, input.roomId, requestId, type);
               } else if (type.startsWith('task:')) {
@@ -271,7 +293,10 @@ export function createRealtime(server: HttpServer) {
             for (const [id, at] of emittedLights)
               if (Date.now() - at > 10000) emittedLights.delete(id);
             const data =
-              type === 'member:leave' ? undefined : await snapshot(input.roomId, auth.userId);
+              type === 'member:leave' ||
+              (type === 'room:transfer' && (input.payload as { leave?: boolean }).leave)
+                ? undefined
+                : await snapshot(input.roomId, auth.userId);
             respond({ requestId, ok: true, revision: data?.revision, data });
           } catch (error) {
             respond({ requestId, ok: false, error: publicError(error) });
@@ -378,6 +403,25 @@ export function createRealtime(server: HttpServer) {
   return {
     io,
     broadcast,
+    metrics() {
+      const sockets = [...io.sockets.sockets.values()].filter((s) => s.connected);
+      return {
+        connections: sockets.length,
+        onlineUsers: new Set(sockets.map((s) => s.data.userId)).size,
+        roomIds: [
+          ...new Set(
+            [...subscriptions.values()].filter((s) => s.socket.connected).map((s) => s.roomId),
+          ),
+        ],
+      };
+    },
+    revokeUser(userId: string) {
+      for (const socket of io.sockets.sockets.values())
+        if (socket.data.userId === userId) {
+          socket.emit('auth:expired');
+          socket.disconnect(true);
+        }
+    },
     revoke(authId: string) {
       for (const socket of io.sockets.sockets.values())
         if (socket.data.authId === authId) {

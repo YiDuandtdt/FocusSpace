@@ -74,6 +74,11 @@ export function Shell({ children }: { children: ReactNode }) {
         <div className="header-actions">
           {user ? (
             <>
+              {user.role === 'ADMIN' ? (
+                <Link to="/admin" className="text-button">
+                  管理后台
+                </Link>
+              ) : null}
               <button className="profile-button" onClick={() => setEditing(true)}>
                 <Avatar small nickname={user.nickname} avatarId={user.avatarId} />
                 <span>{user.nickname}</span>
@@ -83,7 +88,7 @@ export function Shell({ children }: { children: ReactNode }) {
                 onClick={() => {
                   if (
                     window.confirm(
-                      '退出登录会断开此登录会话的房间连接并清除本浏览器草稿。如果你是房主，且没有其他有效连接在宽限期内恢复，整个房间将结束；普通成员超时会释放座位。确认退出？',
+                      '退出登录会断开此登录会话的房间连接并清除本浏览器草稿。如果你是房主，且没有其他有效连接在宽限期内恢复，将由在线且非暂离成员接任，无合适成员才结束房间；超时会释放自己的座位。确认退出？',
                     )
                   ) {
                     setEditing(false);

@@ -9,6 +9,7 @@ import { useRoom } from '../state/useRoom';
 import { PhaseTimer, TaskPanel, ChatPanel, SummaryPanel } from '../features/SessionPanels';
 import { StudySpace } from '../features/space/StudySpace';
 import { Encouragement } from '../features/Encouragement';
+import { OwnerControls } from '../features/OwnerControls';
 import { AmbientAudio } from '../features/audio/AmbientAudio';
 import { memberLabels as stateLabels } from '../features/space/memberPresentation';
 
@@ -31,7 +32,10 @@ export function RoomPage() {
     try {
       await command(type, payload);
       if (type === 'session:end') await refresh();
-      if (type === 'member:leave') {
+      if (
+        type === 'member:leave' ||
+        (type === 'room:transfer' && (payload as { leave?: boolean }).leave)
+      ) {
         await refresh();
         navigate('/');
       }
@@ -219,7 +223,7 @@ export function RoomPage() {
                   {lobby
                     ? '所有成员在线、非暂离且准备后，房主可以开始。'
                     : me?.lateJoin
-                      ? '你是中途加入，从入座连接后开始计时。'
+                      ? '你是中途加入，已立即同步当前阶段，从入座连接后开始个人计时。'
                       : '暂离时暂停个人计时，房间节奏继续。'}
                 </p>
               </div>
@@ -330,6 +334,7 @@ export function RoomPage() {
               <p className="member-empty">复制房间码，邀请第一位学习搭子。</p>
             ) : null}
           </section>
+          <OwnerControls data={data} disabled={!writable} perform={perform} />
           <RhythmPanel
             key={`${data.session.focusSeconds}-${data.session.breakSeconds}`}
             data={data}
@@ -367,7 +372,7 @@ export function RoomPage() {
           </h2>
           <p className="muted">
             {data.myPermissions.isOwner
-              ? '你是房主，离开后房间将对所有成员结束。'
+              ? '这会结束所有人的共学并结算全房。如仅自己离开，请取消并使用“转交后自己离开”。'
               : '你的座位会被释放，之后可以用房间码重新加入。'}
           </p>
           <div className="dialog-actions">

@@ -8,6 +8,7 @@ import { HomePage } from './pages/HomePage';
 import { RoomPage } from './pages/RoomPage';
 import { HistoryPage } from './pages/HistoryPage';
 import { InvitePage } from './pages/InvitePage';
+import { AdminPage } from './pages/AdminPage';
 import { SummaryPage } from './pages/SummaryPage';
 import './styles.css';
 import './features/space/space.css';
@@ -47,6 +48,14 @@ function App() {
             </Notice>
           ) : null}
           <Routes key={user?.id ?? 'anonymous'}>
+            <Route
+              path="/admin/*"
+              element={
+                <Protected>
+                  <AdminPage />
+                </Protected>
+              }
+            />
             <Route
               path="/history"
               element={

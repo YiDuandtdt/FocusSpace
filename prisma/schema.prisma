@@ -26,6 +26,8 @@ model User {
   nickname     String
   avatarId     String @default("lake")
   role         Role @default(USER)
+  bannedAt     DateTime?
+  banReason    String?
   createdAt    DateTime @default(now())
   authSessions AuthSession[]
   ownedRooms   Room[]
@@ -54,11 +56,14 @@ model Room {
   owner     User @relation(fields: [ownerId], references: [id])
   sessionId String @unique
   session   StudySession @relation(fields: [sessionId], references: [id])
+  visibility String @default("PRIVATE")
+  delistedAt DateTime?
   capacity  Int @default(8)
   revision  Int @default(1)
   createdAt DateTime @default(now())
   members   RoomMember[]
   messages  ChatMessage[]
+  @@index([visibility, createdAt])
 }
 model StudySession {
   id           String @id @default(cuid())
@@ -124,6 +129,7 @@ model ChatMessage {
   session   StudySession @relation(fields: [sessionId], references: [id])
   userId    String
   user      User @relation(fields: [userId], references: [id])
+  removedAt DateTime?
   content   String
   createdAt DateTime @default(now())
   requestId String
@@ -176,4 +182,17 @@ model CommandReceipt {
   createdAt   DateTime @default(now())
   @@unique([userId, requestId])
   @@index([createdAt])
+}
+
+model AdminAudit {
+  id String @id @default(cuid())
+  actorId String
+  action String
+  targetId String
+  reason String
+  createdAt DateTime @default(now())
+  result String
+  summary String
+  requestId String
+  @@index([createdAt, id])
 }

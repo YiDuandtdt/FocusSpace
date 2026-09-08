@@ -48,13 +48,11 @@ export async function recentMessages(sessionId: string): Promise<ChatMessage[]> 
     take: 50,
     include: { user: { select: { nickname: true } } },
   });
-  return messages
-    .reverse()
-    .map((m) => ({
-      id: m.id,
-      userId: m.userId,
-      nickname: m.user.nickname,
-      content: m.content,
-      createdAt: m.createdAt.getTime(),
-    }));
+  return messages.reverse().map((m) => ({
+    id: m.id,
+    userId: m.userId,
+    nickname: m.user.nickname,
+    content: m.removedAt ? '消息已移除' : m.content,
+    createdAt: m.createdAt.getTime(),
+  }));
 }

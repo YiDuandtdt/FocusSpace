@@ -38,6 +38,7 @@ export async function receipt<T>(
     if (old.commandType !== commandType || old.payloadHash !== payloadHash)
       throw new AppError('CONFLICT', '此请求标识已用于不同操作，请重新操作', 409);
     const result = JSON.parse(old.result);
+    if (result.removed) throw new AppError('MESSAGE_REMOVED', '消息已由管理员移除', 409);
     if (result.expired) throw new AppError('REQUEST_EXPIRED', '该消息已超过保留期限', 409);
     return result as T;
   }
@@ -56,7 +57,13 @@ export async function receipt<T>(
 }
 export async function createRoom(
   userId: string,
-  input: { requestId: string; name: string; focusSeconds: number; breakSeconds: number },
+  input: {
+    requestId: string;
+    name: string;
+    focusSeconds: number;
+    breakSeconds: number;
+    visibility?: string;
+  },
 ) {
   return db.$transaction((tx) =>
     receipt(tx, userId, input.requestId, 'room:create', input, async () => {
@@ -70,6 +77,7 @@ export async function createRoom(
       const room = await tx.room.create({
         data: {
           name: input.name,
+          visibility: input.visibility ?? 'PRIVATE',
           code,
           owner: { connect: { id: userId } },
           capacity: ROOM_CAPACITY,
@@ -83,10 +91,18 @@ export async function createRoom(
     }),
   );
 }
-export async function joinRoom(userId: string, input: { requestId: string; code: string }) {
+export async function joinRoom(
+  userId: string,
+  input: { requestId: string; code?: string; publicRoomId?: string },
+) {
   return db.$transaction((tx) =>
     receipt(tx, userId, input.requestId, 'room:membership', input, async () => {
-      const room = await tx.room.findUnique({ where: { code: input.code }, include });
+      const room = await tx.room.findUnique({
+        where: input.publicRoomId ? { id: input.publicRoomId } : { code: input.code },
+        include,
+      });
+      if (input.publicRoomId && room?.visibility !== 'PUBLIC')
+        throw new AppError('ROOM_NOT_PUBLIC', '房间已转为私有或下架，请刷新公开列表', 409);
       if (!room) throw new AppError('ROOM_NOT_FOUND', '没有找到这个房间，请检查房间码', 404);
       if (room.session.phase === 'ENDED')
         throw new AppError('ROOM_ENDED', '这个房间已结束，请向朋友获取新的房间码', 409);
@@ -171,6 +187,8 @@ export async function snapshot(roomId: string, userId: string): Promise<RoomSnap
       code: room.code,
       ownerId: room.ownerId,
       capacity: room.capacity,
+      visibility: room.visibility as 'PRIVATE' | 'PUBLIC',
+      delisted: !!room.delistedAt,
     },
     session: {
       id: room.sessionId,
@@ -274,9 +292,7 @@ export async function setConnected(
     const state = connected ? 'CONNECTED' : 'DISCONNECTED';
     if (member.connectionState === state) return;
     if (connected && reconnectDeadline(member) <= at) {
-      if (room.ownerId === userId)
-        await finishSession(tx, roomId, 'OWNER_DISCONNECTED', reconnectDeadline(member));
-      else await leaveMember(tx, roomId, userId, 'DISCONNECTED');
+      await leaveMember(tx, roomId, userId, 'OWNER_DISCONNECTED', reconnectDeadline(member));
       return;
     }
     await tx.roomMember.update({
@@ -293,20 +309,88 @@ export async function setConnected(
     await bump(tx, roomId);
   });
 }
-export async function leaveMember(tx: Tx, roomId: string, userId: string, reason: string) {
-  const { room, member } = await requireMember(roomId, userId, tx);
-  if (room.session.phase === 'ENDED') return;
-  if (room.ownerId === userId) {
-    await finishSession(tx, roomId, reason);
-    return;
-  } else {
-    await closePresence(tx, room.sessionId, userId, new Date(), 'LEFT');
-    await tx.roomMember.update({
-      where: { id: member.id },
-      data: { leftAt: new Date(), ready: false, connectionState: 'DISCONNECTED' },
-    });
+// All callers run inside the single writer queue and one database transaction.
+export async function transferOwner(tx: Tx, roomId: string, ownerId: string, targetId?: string) {
+  const room = await tx.room.findUniqueOrThrow({ where: { id: roomId }, include });
+  if (room.ownerId !== ownerId || room.session.phase === 'ENDED')
+    throw new AppError('CONFLICT', '房主或房间状态已变化，请刷新后重试', 409);
+  const eligible = room.members
+    .filter(
+      (m) =>
+        !m.leftAt &&
+        m.userId !== ownerId &&
+        m.connectionState === 'CONNECTED' &&
+        !m.afk &&
+        !m.user.bannedAt,
+    )
+    .sort(
+      (a, b) =>
+        a.joinedAt.getTime() - b.joinedAt.getTime() ||
+        a.seatIndex - b.seatIndex ||
+        a.userId.localeCompare(b.userId),
+    );
+  const target = targetId ? eligible.find((m) => m.userId === targetId) : eligible[0];
+  if (!target) {
+    if (targetId) throw new AppError('CONFLICT', '接任成员已离线、暂离或失去成员资格', 409);
+    return false;
   }
+  await tx.room.update({
+    where: { id: roomId },
+    data: { ownerId: target.userId, revision: { increment: 1 } },
+  });
+  return true;
+}
+export async function leaveMember(
+  tx: Tx,
+  roomId: string,
+  userId: string,
+  reason: string,
+  at = new Date(),
+) {
+  const room = await tx.room.findUnique({ where: { id: roomId }, include });
+  const member = room?.members.find((m) => m.userId === userId);
+  if (!room || !member || member.leftAt || room.session.phase === 'ENDED') return;
+  if (room.ownerId === userId && !(await transferOwner(tx, roomId, userId))) {
+    await finishSession(tx, roomId, reason, at);
+    return;
+  }
+  await closePresence(tx, room.sessionId, userId, at, reason);
+  await tx.roomMember.update({
+    where: { id: member.id },
+    data: {
+      leftAt: at,
+      ready: false,
+      connectionState: 'DISCONNECTED',
+      reconnectDeadlineAt: null,
+    },
+  });
   await bump(tx, roomId);
+}
+export async function ownerCommand(
+  userId: string,
+  roomId: string,
+  requestId: string,
+  type: string,
+  payload: { targetId?: string; leave?: boolean; visibility?: 'PRIVATE' | 'PUBLIC' },
+) {
+  return db.$transaction((tx) =>
+    receipt(tx, userId, requestId, type, { roomId, payload }, async () => {
+      const { room, member } = await requireMember(roomId, userId, tx);
+      if (room.ownerId !== userId) throw new AppError('FORBIDDEN', '只有当前房主可以操作', 403);
+      if (room.session.phase === 'ENDED' || member.connectionState !== 'CONNECTED')
+        throw new AppError('CONFLICT', '请等待连接恢复，且房间必须仍在进行', 409);
+      if (type === 'room:transfer') {
+        await transferOwner(tx, roomId, userId, payload.targetId);
+        if (payload.leave) await leaveMember(tx, roomId, userId, 'TRANSFER_LEFT');
+      } else {
+        if (payload.visibility === 'PUBLIC' && room.delistedAt)
+          throw new AppError('FORBIDDEN', '该房间已被管理员下架，本场共学不能重新公开', 403);
+        await tx.room.update({ where: { id: roomId }, data: { visibility: payload.visibility } });
+        await bump(tx, roomId);
+      }
+      return { roomId };
+    }),
+  );
 }
 export async function mutateMember(
   userId: string,

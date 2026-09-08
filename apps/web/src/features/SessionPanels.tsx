@@ -428,6 +428,8 @@ export function ChatPanel({
 export function SummaryPanel({ summary }: { summary: SessionSummary }) {
   const r = summary.record;
   const reasons: Record<string, string> = {
+    ADMIN_ENDED: '管理员结束共学',
+    USER_BANNED: '房主被封禁且无人可接任',
     OWNER_ENDED: '房主主动结束',
     OWNER_LEFT: '房主离开',
     OWNER_DISCONNECTED: '房主断线超时',

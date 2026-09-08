@@ -27,7 +27,10 @@
     "test:session": "tsx scripts/verify-session.ts",
     "test:space": "tsx scripts/verify-space.ts",
     "audio:generate": "node scripts/generate-ambience.mjs",
-    "test:feedback": "tsx scripts/verify-feedback.ts"
+    "test:feedback": "tsx scripts/verify-feedback.ts",
+    "admin:init": "node --env-file=.env scripts/init-admin.mjs",
+    "test:admin": "tsx scripts/verify-admin.ts",
+    "start:local": "node --env-file=.env scripts/start-local.mjs"
   },
   "devDependencies": {
     "@playwright/test": "1.55.0",

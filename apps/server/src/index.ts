@@ -3,7 +3,16 @@ import { createServer } from 'node:http';
 import { fileURLToPath } from 'node:url';
 import { existsSync } from 'node:fs';
 import { rateLimit } from 'express-rate-limit';
-import { ZodError } from 'zod';
+import { ZodError, z } from 'zod';
+import { adminActionSchema, requestIdSchema } from '@focusspace/shared';
+import { publicRooms } from './modules/public.js';
+import {
+  requireAdmin,
+  adminList,
+  adminOverview,
+  adminImpact,
+  adminMutate,
+} from './modules/admin.js';
 import {
   credentialsSchema,
   registerSchema,
@@ -136,6 +145,32 @@ app.post('/api/rooms', async (req, res) => {
   });
   res.status(201).json(result);
 });
+app.get('/api/rooms/public', async (req, res) => {
+  res.json(
+    await serialize(async () => {
+      const due = await db.room.findMany({
+        where: { visibility: 'PUBLIC', session: { phase: { not: 'ENDED' } } },
+        select: { id: true },
+      });
+      for (const room of due)
+        if (await advanceRoom(room.id)) await realtime.broadcast(room.id, 'phase:change');
+      return publicRooms(req.query);
+    }),
+  );
+});
+app.post('/api/rooms/public/:id/join', async (req, res) => {
+  const input = z.object({ requestId: requestIdSchema }).strict().parse(req.body);
+  res.json(
+    await serialize(async () => {
+      const auth = await authenticate(req.headers.cookie);
+      const roomId = req.params.id as string;
+      if (await advanceRoom(roomId)) await realtime.broadcast(roomId, 'phase:change');
+      const result = await joinRoom(auth.userId, { ...input, publicRoomId: roomId });
+      await realtime.broadcast(result.roomId, 'member:joined');
+      return result;
+    }),
+  );
+});
 app.post('/api/rooms/join', async (req, res) => {
   const input = joinRoomSchema.parse(req.body);
   const result = await serialize(async () => {
@@ -175,6 +210,55 @@ app.get('/api/sessions/:id/summary', async (req, res) => {
     return summary(req.params.id as string, auth.userId);
   });
   res.json(result);
+});
+app.use('/admin', async (req, res, next) => {
+  try {
+    await requireAdmin(req.headers.cookie);
+    res.setHeader('Cache-Control', 'no-store');
+    next();
+  } catch (error) {
+    if (error instanceof AppError && error.status === 401) {
+      res.redirect('/login?next=/admin');
+      return;
+    }
+    next(error);
+  }
+});
+app.get('/api/admin/overview', async (req, res) => {
+  res.json(
+    await serialize(async () => {
+      await requireAdmin(req.headers.cookie);
+      return adminOverview(realtime.metrics());
+    }),
+  );
+});
+app.get('/api/admin/:kind', async (req, res) => {
+  res.json(
+    await serialize(async () => {
+      await requireAdmin(req.headers.cookie);
+      return adminList(req.params.kind as string, req.query);
+    }),
+  );
+});
+app.post('/api/admin/preview', async (req, res) => {
+  const input = adminActionSchema.pick({ action: true, targetId: true }).parse(req.body);
+  res.json(
+    await serialize(async () => {
+      await requireAdmin(req.headers.cookie);
+      return adminImpact(input.action, input.targetId);
+    }),
+  );
+});
+app.post('/api/admin/actions', async (req, res) => {
+  res.json(
+    await serialize(async () => {
+      const auth = await requireAdmin(req.headers.cookie);
+      const result = await adminMutate(auth.userId, req.body);
+      if (result.revokedUserId) realtime.revokeUser(result.revokedUserId);
+      for (const roomId of result.roomIds) await realtime.broadcast(roomId, 'admin:changed');
+      return { auditId: result.auditId };
+    }),
+  );
 });
 app.use('/api', (_req, _res, next) => next(new AppError('NOT_FOUND', '接口不存在', 404)));
 const webPath = fileURLToPath(new URL('../../web/dist/', import.meta.url));

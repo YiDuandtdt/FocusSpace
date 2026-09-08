@@ -6,12 +6,14 @@ import { roomRequest, errorMessage } from '../api';
 import { Notice, RhythmFields } from '../components';
 
 import { readPreferences, savePreferences } from '../preferences';
+import { PublicRooms } from '../features/PublicRooms';
 import { HistoryPage } from './HistoryPage';
 
 export function HomePage() {
   const { user, currentRoomId, refresh } = useAuth();
   const navigate = useNavigate();
   const [name, setName] = useState('');
+  const [visibility, setVisibility] = useState<'PRIVATE' | 'PUBLIC'>('PRIVATE');
   const [focus, setFocus] = useState(() => readPreferences(user!.id).focusSeconds / 60);
   const [rest, setRest] = useState(() => readPreferences(user!.id).breakSeconds / 60);
   const [code, setCode] = useState('');
@@ -31,6 +33,7 @@ export function HomePage() {
         mode === 'create'
           ? {
               name,
+              visibility,
               focusSeconds: focus * 60,
               breakSeconds: rest * 60,
               requestId: createRequestId(),
@@ -104,6 +107,16 @@ export function HomePage() {
               required
             />
           </label>
+          <label>
+            房间可见性
+            <select
+              value={visibility}
+              onChange={(e) => setVisibility(e.target.value as 'PRIVATE' | 'PUBLIC')}
+            >
+              <option value="PRIVATE">私有 · 通过房间码邀请</option>
+              <option value="PUBLIC">公开 · 首页展示，其他用户可加入</option>
+            </select>
+          </label>
           <RhythmFields focus={focus} rest={rest} setFocus={setFocus} setRest={setRest} />
           <button
             type="button"
@@ -166,11 +179,14 @@ export function HomePage() {
             </span>
             <div>
               <h3>小房间，刚刚好的陪伴</h3>
-              <p>房间仅通过房间码加入。成员到来、准备或暂时离开，都会同步给房间里的每个人。</p>
+              <p>
+                私有房间通过房间码加入，公开房间也可从首页加入。成员到来、准备或暂时离开，都会同步给房间里的每个人。
+              </p>
             </div>
           </aside>
         </div>
       </section>
+      <PublicRooms />
       <HistoryPage recent />
     </div>
   );

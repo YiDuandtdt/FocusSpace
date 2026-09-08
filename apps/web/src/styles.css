@@ -1906,3 +1906,141 @@ legend {
 .task-rules summary {
   cursor: pointer;
 }
+
+/* Public directory and moderation reuse the existing paper panels and controls. */
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+  border: 1px solid #cdd8d3;
+  background: #fffefa;
+  border-radius: 10px;
+  padding: 12px;
+  width: 100%;
+}
+textarea {
+  min-height: 100px;
+  resize: vertical;
+}
+.public-directory {
+  margin: 48px 0;
+}
+.directory-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: end;
+  margin: 20px 0;
+}
+.directory-filters label {
+  flex: 1;
+  min-width: 180px;
+  margin: 0;
+}
+.directory-filters form {
+  margin: 0;
+  flex: 1;
+}
+.public-grid,
+.admin-cards {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+}
+.public-card h3 {
+  font-size: 23px;
+  overflow-wrap: anywhere;
+}
+.public-card p {
+  line-height: 1.7;
+}
+.pagination {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  margin: 24px 0;
+}
+.owner-controls h2 {
+  font-size: 19px;
+}
+.owner-controls label {
+  margin-top: 20px;
+}
+.owner-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 16px;
+}
+.admin-page > .eyebrow {
+  display: block;
+  margin-top: 24px;
+}
+.admin-page h1 {
+  margin-bottom: 12px;
+}
+.admin-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 28px 0;
+}
+.admin-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+.admin-metrics strong {
+  display: block;
+  font-size: 36px;
+  margin-top: 12px;
+}
+.admin-table-wrap {
+  overflow-x: auto;
+  border-radius: 14px;
+  background: #fffefa;
+}
+.admin-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+.admin-table th,
+.admin-table td {
+  padding: 18px;
+  border-bottom: 1px solid #e2e7e1;
+  vertical-align: top;
+}
+.admin-table td small,
+.admin-cards p,
+.admin-confirm p {
+  overflow-wrap: anywhere;
+}
+.admin-cards article {
+  min-width: 0;
+}
+.message-content {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.admin-confirm {
+  max-height: 85vh;
+  overflow-y: auto;
+}
+@media (max-width: 700px) {
+  .public-grid,
+  .admin-cards {
+    grid-template-columns: 1fr;
+  }
+  .admin-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .admin-table {
+    min-width: 650px;
+  }
+  .owner-actions .button {
+    flex: 1;
+  }
+}

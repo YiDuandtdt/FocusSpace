@@ -43,7 +43,7 @@ export function useRoom(roomId: string, userId: string) {
     if (incoming.revision < latestRevision.current) return;
     latestRevision.current = incoming.revision;
     setData(incoming);
-    setMessages((old) => mergeMessages(old, incoming.recentMessages, incoming.serverTime));
+    setMessages(mergeMessages([], incoming.recentMessages, incoming.serverTime));
   }, []);
   useEffect(() => {
     let alive = true;
@@ -122,6 +122,7 @@ export function useRoom(roomId: string, userId: string) {
       if (alive) {
         setStatus('offline');
         setLights([]);
+        setMessages([]);
         setData((old) =>
           old ? { ...old, members: old.members.map((m) => ({ ...m, publicTasks: [] })) } : old,
         );
@@ -138,7 +139,7 @@ export function useRoom(roomId: string, userId: string) {
     });
     const seen = new Set<string>();
     socket.on('chat:message', (event: ChatEvent) => {
-      if (!alive || event.roomId !== roomId) return;
+      if (!alive || event.roomId !== roomId || event.revision < latestRevision.current) return;
       setMessages((old) => mergeMessages(old, [event.data], event.serverTime));
     });
     socket.on('room:light', (event: LightEvent) => {

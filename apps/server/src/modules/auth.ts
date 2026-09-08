@@ -24,7 +24,12 @@ export async function authenticate(header?: string) {
         include: { user: true },
       })
     : null;
-  if (!session || session.revokedAt || session.expiresAt.getTime() <= Date.now())
+  if (
+    !session ||
+    session.user.bannedAt ||
+    session.revokedAt ||
+    session.expiresAt.getTime() <= Date.now()
+  )
     throw new AppError('UNAUTHORIZED', '登录已失效，请重新登录', 401);
   return session;
 }
@@ -58,9 +63,11 @@ export async function login(username: string, password: string) {
     throw new AppError('UNAUTHORIZED', '账号或密码不正确', 401);
   const token = randomBytes(32).toString('hex');
   const expiresAt = new Date(Date.now() + config.SESSION_DAYS * 86400000);
-  await serialize(() =>
-    db.authSession.create({ data: { tokenHash: digest(token), userId: user.id, expiresAt } }),
-  );
+  await serialize(async () => {
+    const current = await db.user.findUniqueOrThrow({ where: { id: user.id } });
+    if (current.bannedAt) throw new AppError('UNAUTHORIZED', '账号已封禁，请联系管理员', 401);
+    await db.authSession.create({ data: { tokenHash: digest(token), userId: user.id, expiresAt } });
+  });
   return { user: publicUser(user), cookie: sessionCookie(token, expiresAt) };
 }
 export function sessionCookie(token: string, expires: Date) {

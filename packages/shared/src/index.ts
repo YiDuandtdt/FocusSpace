@@ -49,6 +49,7 @@ export const chatSendSchema = z
   .strict();
 export const requestIdSchema = z.string().uuid('请求标识无效');
 export const createRoomSchema = rhythmSchema.extend({
+  visibility: z.enum(['PRIVATE', 'PUBLIC']).default('PRIVATE'),
   name: z.string().trim().min(1, '请输入房间名称').max(40, '房间名最多 40 字'),
   requestId: requestIdSchema,
 });
@@ -91,7 +92,15 @@ export type Member = {
   publicTasks: Pick<Task, 'id' | 'title' | 'completed'>[];
 };
 export type RoomSnapshot = {
-  room: { id: string; code: string; name: string; ownerId: string; capacity: number };
+  room: {
+    id: string;
+    code: string;
+    name: string;
+    ownerId: string;
+    capacity: number;
+    visibility: 'PRIVATE' | 'PUBLIC';
+    delisted: boolean;
+  };
   session: {
     id: string;
     phase: Phase;
@@ -142,6 +151,8 @@ export type RoomCommand =
   | 'room:join'
   | 'room:sync'
   | 'room:configure'
+  | 'room:transfer'
+  | 'room:visibility'
   | 'member:ready'
   | 'member:afk'
   | 'member:leave'
@@ -228,3 +239,91 @@ export type HistoryPage = {
   };
   demoSessions: number;
 };
+
+export type Page<T> = { items: T[]; page: number; pageSize: number; total: number };
+export type PublicRoom = {
+  id: string;
+  name: string;
+  members: number;
+  capacity: number;
+  phase: Phase;
+  focusSeconds: number;
+  breakSeconds: number;
+  nextStartAt: number | null;
+};
+export type AdminUser = {
+  id: string;
+  username: string;
+  nickname: string;
+  role: User['role'];
+  bannedAt: string | null;
+  banReason: string | null;
+  createdAt: string;
+};
+export type AdminRoom = {
+  id: string;
+  name: string;
+  ownerId: string;
+  visibility: string;
+  delistedAt: string | null;
+  capacity: number;
+  session: {
+    id: string;
+    phase: Phase;
+    roundNo: number;
+    focusSeconds: number;
+    breakSeconds: number;
+    endedAt: string | null;
+    endReason: string | null;
+  };
+  members: {
+    userId: string;
+    nickname: string;
+    seatIndex: number;
+    connectionState: string;
+    afk: boolean;
+  }[];
+};
+export type AdminMessage = {
+  id: string;
+  roomId: string;
+  sessionId: string;
+  userId: string;
+  nickname: string;
+  content: string;
+  createdAt: string;
+  removedAt: string | null;
+};
+export type Audit = {
+  id: string;
+  actorId: string;
+  action: string;
+  targetId: string;
+  reason: string;
+  createdAt: string;
+  result: string;
+  summary: string;
+  requestId: string;
+};
+export type AdminOverview = {
+  connections: number;
+  onlineUsers: number;
+  activeRooms: number;
+  users: number;
+  bannedUsers: number;
+  publicRooms: number;
+  ongoingSessions: number;
+  endedSessions: number;
+  retainedMessages: number;
+};
+export const adminActionSchema = z
+  .object({
+    action: z.enum(['user:ban', 'user:unban', 'room:delist', 'room:end', 'message:remove']),
+    targetId: z.string().min(1).max(100),
+    reason: z.string().trim().min(2, '请说明至少两个字的原因').max(300),
+    requestId: requestIdSchema,
+    impactKey: z.string().min(1).max(100),
+  })
+  .strict();
+export type AdminAction = z.infer<typeof adminActionSchema>;
+export type AdminImpact = { impactKey: string; description: string };
