@@ -26,6 +26,7 @@
     "test:flow": "tsx scripts/verify-flow.ts",
     "test:session": "tsx scripts/verify-session.ts",
     "test:space": "tsx scripts/verify-space.ts",
+    "test:personal": "tsx scripts/verify-personal.ts",
     "audio:generate": "node scripts/generate-ambience.mjs",
     "audio:prepare": "node scripts/prepare-ambience.mjs",
     "test:feedback": "tsx scripts/verify-feedback.ts",

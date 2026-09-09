@@ -233,7 +233,7 @@ export function RoomPage() {
           {immersion.notice}
         </p>
       ) : null}
-      {lobby ? (
+      {lobby && !data.room.spaceSnapshot ? (
         <section className="theme-picker" aria-label="房间主题">
           <div className="panel-heading">
             <h2>选一处，安静坐下</h2>
@@ -265,6 +265,12 @@ export function RoomPage() {
             ))}
           </div>
         </section>
+      ) : null}
+      {data.room.spaceSnapshot ? (
+        <div className="room-space-origin">
+          在 {data.room.spaceSnapshot.ownerName} 的个人空间共学 ·
+          本次布置已固定，转交主持不改变空间归属
+        </div>
       ) : null}
       <nav className="room-shortcuts" aria-label="房间快捷入口">
         <a href="#room-space">空间与计时</a>
@@ -300,6 +306,8 @@ export function RoomPage() {
               phase={data.session.phase}
               userId={user?.id}
               theme={data.room.theme}
+              space={data.room.spaceSnapshot?.config}
+              seed={data.room.spaceSnapshot?.seed}
               reducedMotion={immersion.reduced}
               completedUsers={lights
                 .filter((light) => light.symbol === '✓')
@@ -324,7 +332,10 @@ export function RoomPage() {
               </p>
             ) : null}
             {!ended ? (
-              <AmbientAudio key={`audio-${roomId}`} recommended={themes[data.room.theme].sound} />
+              <AmbientAudio
+                key={`audio-${roomId}`}
+                recommended={data.room.spaceSnapshot?.config.sound ?? themes[data.room.theme].sound}
+              />
             ) : null}
             {!ended ? (
               <div className="lobby-controls">
@@ -419,7 +430,12 @@ export function RoomPage() {
             <ul className="member-list">
               {data.members.map((member) => (
                 <li key={member.userId}>
-                  <Avatar small nickname={member.nickname} avatarId={member.avatarId} />
+                  <Avatar
+                    small
+                    nickname={member.nickname}
+                    avatarId={member.avatarId}
+                    avatarUrl={member.avatarUrl}
+                  />
                   <div>
                     <strong>
                       {member.nickname}

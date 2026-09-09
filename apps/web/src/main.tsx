@@ -12,10 +12,14 @@ import './styles.css';
 import './features/space/space.css';
 import './features/space/immersion.css';
 import './experience.css';
+import './features/space/personal.css';
 import { RouteAnnouncer } from './navigation';
 
 const RoomPage = lazy(() => import('./pages/RoomPage').then((m) => ({ default: m.RoomPage })));
 const AdminPage = lazy(() => import('./pages/AdminPage').then((m) => ({ default: m.AdminPage })));
+const PersonalSpacePage = lazy(() =>
+  import('./pages/PersonalSpacePage').then((m) => ({ default: m.PersonalSpacePage })),
+);
 
 function Protected({ children }: { children: ReactNode }) {
   const { user } = useAuth();
@@ -63,6 +67,14 @@ function App() {
             }
           >
             <Routes key={user?.id ?? 'anonymous'}>
+              <Route
+                path="/space"
+                element={
+                  <Protected>
+                    <PersonalSpacePage />
+                  </Protected>
+                }
+              />
               <Route
                 path="/admin/*"
                 element={

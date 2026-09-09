@@ -85,6 +85,16 @@ export function HomePage() {
         </div>
       ) : null}
       {error ? <Notice>{error}</Notice> : null}
+      <section className="personal-space-entry">
+        <div>
+          <span className="eyebrow">YOUR OWN READING ROOM</span>
+          <h2>把喜欢的样子，留在这里。</h2>
+          <p>装扮虚拟形象，布置个人自习室。发起共学时，用你的空间接待朋友。</p>
+        </div>
+        <Link to="/space" className="button primary">
+          进入个人空间 ↗
+        </Link>
+      </section>
       <section className="entry-grid" id="room-entry" aria-label="创建或加入房间">
         <form className="panel create-panel" onSubmit={(event) => void enter(event, 'create')}>
           <div className="panel-heading">
@@ -96,7 +106,9 @@ export function HomePage() {
               ＋
             </span>
           </div>
-          <p className="muted">为你和朋友留一张桌子，最多 8 人。</p>
+          <p className="muted">
+            使用已保存的个人空间接待朋友，最多 8 人。<Link to="/space">先看看布置</Link>
+          </p>
           <label>
             房间名称
             <input

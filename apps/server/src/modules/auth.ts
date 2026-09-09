@@ -3,6 +3,7 @@ import { parse, serialize as cookie } from 'cookie';
 import { compare, hash } from 'bcryptjs';
 import type { User as DbUser } from '@prisma/client';
 import type { User } from '@focusspace/shared';
+import { DEFAULT_SPACE, readCharacter } from '@focusspace/shared';
 import { db, serialize } from '../db.js';
 import { config } from '../config.js';
 import { AppError } from '../errors.js';
@@ -15,6 +16,9 @@ export const publicUser = (user: DbUser): User => ({
   nickname: user.nickname,
   avatarId: user.avatarId as User['avatarId'],
   role: user.role,
+  avatarUrl: user.avatarImage ? `/api/avatars/${user.id}?v=${user.avatarVersion}` : null,
+  character: readCharacter(user.characterConfig),
+  onboarding: user.onboarding as User['onboarding'],
 });
 export async function authenticate(header?: string) {
   const token = parse(header ?? '')[cookieName];
@@ -51,6 +55,7 @@ export async function register(input: {
         nickname: input.nickname,
         avatarId: input.avatarId,
         passwordHash,
+        personalSpace: { create: { config: JSON.stringify(DEFAULT_SPACE) } },
       },
     }),
   );

@@ -1,4 +1,6 @@
 import { z } from 'zod';
+export * from './personal.js';
+import type { CharacterConfig, SpaceSnapshot } from './personal.js';
 
 export const AVATARS = ['lake', 'sage', 'lilac', 'sun'] as const;
 export const ROOM_CAPACITY = 8;
@@ -15,10 +17,13 @@ export const credentialsSchema = z.object({
     .regex(/^[a-z0-9_]+$/, '账号只能包含字母、数字和下划线'),
   password: z.string().min(8, '密码至少 8 位').max(72, '密码最多 72 位'),
 });
-export const profileSchema = z.object({
-  nickname: z.string().trim().min(1, '请输入昵称').max(20, '昵称最多 20 字'),
-  avatarId: z.enum(AVATARS),
-});
+export const profileSchema = z
+  .object({
+    nickname: z.string().trim().min(1, '请输入昵称').max(20, '昵称最多 20 字'),
+    avatarId: z.enum(AVATARS),
+    removeAvatar: z.boolean().optional(),
+  })
+  .strict();
 export const registerSchema = credentialsSchema.extend({
   nickname: profileSchema.shape.nickname,
   avatarId: profileSchema.shape.avatarId.default('lake'),
@@ -51,11 +56,13 @@ export const chatSendSchema = z
   .object({ content: z.string().trim().min(1, '请输入消息').max(500, '消息最多 500 字') })
   .strict();
 export const requestIdSchema = z.string().uuid('请求标识无效');
-export const createRoomSchema = rhythmSchema.extend({
-  visibility: z.enum(['PRIVATE', 'PUBLIC']).default('PRIVATE'),
-  name: z.string().trim().min(1, '请输入房间名称').max(40, '房间名最多 40 字'),
-  requestId: requestIdSchema,
-});
+export const createRoomSchema = rhythmSchema
+  .extend({
+    visibility: z.enum(['PRIVATE', 'PUBLIC']).default('PRIVATE'),
+    name: z.string().trim().min(1, '请输入房间名称').max(40, '房间名最多 40 字'),
+    requestId: requestIdSchema,
+  })
+  .strict();
 export const joinRoomSchema = z.object({
   code: z
     .string()
@@ -76,11 +83,16 @@ export type User = {
   nickname: string;
   avatarId: (typeof AVATARS)[number];
   role: 'USER' | 'ADMIN';
+  avatarUrl?: string | null;
+  character?: CharacterConfig;
+  onboarding?: 'PENDING' | 'DONE' | 'SKIPPED';
 };
 export type Member = {
   userId: string;
   nickname: string;
   avatarId: User['avatarId'];
+  avatarUrl?: string | null;
+  character?: CharacterConfig;
   seatIndex: number;
   ready: boolean;
   afk: boolean;
@@ -104,6 +116,7 @@ export type RoomSnapshot = {
     visibility: 'PRIVATE' | 'PUBLIC';
     delisted: boolean;
     theme: RoomTheme;
+    spaceSnapshot?: SpaceSnapshot | null;
   };
   session: {
     id: string;

@@ -1,0 +1,50 @@
+{
+  "checkedAt": "2026-09-09T12:56:12.959Z",
+  "database": "isolated legacy fixture",
+  "typecheck": "pass",
+  "build": "pass",
+  "runtimeErrors": [],
+  "screenshots": [
+    "01-first-setup.png",
+    "02-personal-room.png",
+    "02b-personal-preview.png",
+    "03-character.png",
+    "03b-character-preview.png",
+    "04-single-room.png",
+    "05-multiplayer-lobby.png",
+    "06-ready.png",
+    "07-focus.png",
+    "07b-focus-scene.png",
+    "08-afk-disconnected.png",
+    "09-mobile.png",
+    "09b-mobile-scene.png",
+    "10-break.png",
+    "11-ended.png",
+    "12-personal-mobile.png",
+    "13-night-arch.png",
+    "14-rain-arch.png"
+  ],
+  "checks": [
+    "onboarding save/skip",
+    "editor save/cancel/default/failure retention",
+    "strict asset/slot/owner validation",
+    "safe avatar decode/re-encode",
+    "8 members consistent scene",
+    "7 real member states",
+    "transfer freezes assets",
+    "personal edits affect next room",
+    "cross-room character",
+    "reconnect",
+    "mobile overflow",
+    "legacy migration/session/record"
+  ],
+  "finalVisualCapture": "passed after label layout, rounded geometry and mobile viewport refinements",
+  "productionMigration": {
+    "status": "passed",
+    "backup": "backups/focusspace-2026-09-09T13-14-02.148Z.db",
+    "preserved": "all backed-up rows across 8 business tables, plus later activity",
+    "personalSpaces": "all accounts backfilled"
+  },
+  "productionHealth": "http://localhost:3001/api/health: ok",
+  "updatedAt": "2026-09-09T13:26:35.436Z"
+}

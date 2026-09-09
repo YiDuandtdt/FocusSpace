@@ -25,6 +25,11 @@ model User {
   passwordHash String
   nickname     String
   avatarId     String @default("lake")
+  avatarImage  Bytes?
+  avatarVersion Int @default(0)
+  characterConfig String @default("{\"version\":1,\"skin\":\"skin.cream\",\"hair\":\"hair.crop\",\"hairColor\":\"hair.ink\",\"outfit\":\"outfit.sage\",\"accessory\":\"accessory.none\"}")
+  onboarding String @default("PENDING")
+  personalSpace PersonalSpace?
   role         Role @default(USER)
   bannedAt     DateTime?
   banReason    String?
@@ -58,6 +63,8 @@ model Room {
   session   StudySession @relation(fields: [sessionId], references: [id])
   visibility String @default("PRIVATE")
   theme      String @default("rain")
+  spaceSnapshot String?
+  spaceOwnerId String?
   delistedAt DateTime?
   capacity  Int @default(8)
   revision  Int @default(1)
@@ -196,4 +203,12 @@ model AdminAudit {
   summary String
   requestId String
   @@index([createdAt, id])
+}
+
+model PersonalSpace {
+  userId String @id
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  config String
+  revision Int @default(1)
+  updatedAt DateTime @updatedAt
 }

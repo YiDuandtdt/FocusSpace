@@ -369,10 +369,8 @@ try {
     await page.getByLabel('昵称', { exact: true }).fill(nickname);
     await page.getByLabel('密码', { exact: true }).fill('BrowserStudy!42');
     await page.getByRole('button', { name: '创建账号', exact: true }).click();
-    await expect(page.getByRole('status')).toContainText('注册成功');
-    await page.getByLabel('账号', { exact: true }).fill(username);
-    await page.getByLabel('密码', { exact: true }).fill('BrowserStudy!42');
-    await page.getByRole('button', { name: '登录 FocusSpace' }).click();
+    await expect(page).toHaveURL(/\/space\?setup=1/);
+    await page.getByRole('button', { name: '跳过，直接开始' }).click();
     await expect(page.getByRole('heading', { name: '创建自习房间' })).toBeVisible();
   }
   await first.goto(`${base}/login`);

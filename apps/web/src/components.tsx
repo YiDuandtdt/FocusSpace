@@ -10,6 +10,7 @@ import { Link, NavLink } from 'react-router-dom';
 import { AVATARS, type User } from '@focusspace/shared';
 import { useAuth } from './auth';
 import { api, errorMessage } from './api';
+import { AvatarUpload } from './features/AvatarUpload';
 
 export function Modal({ children, ...props }: ComponentPropsWithoutRef<'dialog'>) {
   const ref = useRef<HTMLDialogElement>(null);
@@ -34,18 +35,26 @@ export function Avatar({
   nickname,
   avatarId,
   small = false,
+  avatarUrl,
 }: {
   nickname: string;
   avatarId: string;
   small?: boolean;
+  avatarUrl?: string | null;
 }) {
   return (
     <span aria-hidden="true" className={`avatar avatar-${avatarId} ${small ? 'avatar-small' : ''}`}>
-      <span className="avatar-face">
-        <i />
-        <i />
-      </span>
-      <span className="avatar-letter">{nickname.slice(0, 1)}</span>
+      {avatarUrl ? (
+        <img src={avatarUrl} alt="" />
+      ) : (
+        <>
+          <span className="avatar-face">
+            <i />
+            <i />
+          </span>
+          <span className="avatar-letter">{nickname.slice(0, 1)}</span>
+        </>
+      )}
     </span>
   );
 }
@@ -59,7 +68,7 @@ export function AvatarPicker({
   const names = ['湖蓝', '鼠尾草', '浅紫', '日光'];
   return (
     <fieldset className="avatar-picker">
-      <legend>选择你的形象</legend>
+      <legend>选择默认头像</legend>
       <div>
         {AVATARS.map((avatar, i) => (
           <button
@@ -112,7 +121,10 @@ export function Shell({ children }: { children: ReactNode }) {
           {user ? (
             <>
               <NavLink to="/" end className="text-button nav-link">
-                我的空间
+                共学首页
+              </NavLink>
+              <NavLink to="/space" className="text-button nav-link">
+                个人空间
               </NavLink>
               <NavLink to="/history" className="text-button nav-link">
                 学习历史
@@ -127,7 +139,12 @@ export function Shell({ children }: { children: ReactNode }) {
                 aria-label={`编辑个人资料：${user.nickname}`}
                 onClick={() => setEditing(true)}
               >
-                <Avatar small nickname={user.nickname} avatarId={user.avatarId} />
+                <Avatar
+                  small
+                  nickname={user.nickname}
+                  avatarId={user.avatarId}
+                  avatarUrl={user.avatarUrl}
+                />
                 <span>{user.nickname}</span>
               </button>
               <button
@@ -216,6 +233,7 @@ function Profile({
 }) {
   const [nickname, setNickname] = useState(user.nickname);
   const [avatarId, setAvatarId] = useState(user.avatarId);
+  const [removeAvatar, setRemoveAvatar] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   async function save(event: FormEvent) {
@@ -230,7 +248,7 @@ function Profile({
     try {
       const data = await api<{ user: User }>('/users/me', {
         method: 'PATCH',
-        body: { nickname, avatarId },
+        body: { nickname, avatarId, removeAvatar },
       });
       onSave(data.user);
       onClose();
@@ -251,7 +269,7 @@ function Profile({
     >
       <form onSubmit={save}>
         <div className="panel-heading">
-          <h2 id="profile-title">你的共学形象</h2>
+          <h2 id="profile-title">个人资料与头像</h2>
           <button
             type="button"
             className="text-button"
@@ -274,12 +292,32 @@ function Profile({
             required
           />
         </label>
-        <AvatarPicker value={avatarId} onChange={setAvatarId} />
+        <AvatarPicker
+          value={removeAvatar || !user.avatarUrl ? avatarId : ''}
+          onChange={(value) => {
+            setAvatarId(value);
+            setRemoveAvatar(true);
+          }}
+        />
+        <p className="muted">
+          默认头像在保存修改后生效。3D 形象可在
+          <Link to="/space" onClick={onClose}>
+            个人空间
+          </Link>
+          单独设置。
+        </p>
         {error ? <Notice>{error}</Notice> : null}
         <button className="button primary full" disabled={busy}>
           {busy ? '保存中…' : '保存修改'}
         </button>
       </form>
+      <AvatarUpload
+        user={user}
+        onSave={(updated) => {
+          onSave(updated);
+          setRemoveAvatar(false);
+        }}
+      />
     </Modal>
   );
 }

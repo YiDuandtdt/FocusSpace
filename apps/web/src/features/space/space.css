@@ -157,7 +157,7 @@
 .scene-host {
   position: relative;
   width: 100%;
-  height: clamp(340px, 35vw, 460px);
+  height: clamp(360px, 40vw, 560px);
   overflow: hidden;
 }
 .scene-host[hidden] {
@@ -172,7 +172,7 @@
   position: absolute;
   transform: translate(-50%, -100%);
   text-align: center;
-  width: 94px;
+  width: 78px;
   padding: 5px 4px;
   border-radius: 6px;
   background: #f8f7edee;
@@ -194,10 +194,11 @@
   color: #65705b;
 }
 .scene-seat-label.is-empty {
-  background: #eeece399;
+  background: transparent;
   border-color: transparent;
-  opacity: 0.8;
+  opacity: 0.55;
 }
+.scene-seat-label.is-empty span { display: none; }
 .scene-seat-label.is-me,
 .seat-card.is-me {
   border-color: #718567;

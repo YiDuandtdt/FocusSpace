@@ -171,10 +171,8 @@ try {
   await login.getByLabel('昵称', { exact: true }).fill('安静读书的人');
   await login.getByLabel('密码', { exact: true }).fill('StudyTogether42!');
   await login.getByRole('button', { name: '创建账号', exact: true }).click();
-  await expect(login.getByText('注册成功，请使用新账号登录。')).toBeVisible();
-  await login.getByLabel('账号', { exact: true }).fill('ui_registered');
-  await login.getByLabel('密码', { exact: true }).fill('StudyTogether42!');
-  await login.getByRole('button', { name: '登录 FocusSpace' }).click();
+  await expect(login).toHaveURL(/\/space\?setup=1/);
+  await login.getByRole('button', { name: '跳过，直接开始' }).click();
   await expect(login.getByRole('heading', { name: '创建自习房间' })).toBeVisible();
   await capture(login, 'home-empty');
   await login.locator('.public-directory').getByLabel('房间名称').fill('找不到的房间');

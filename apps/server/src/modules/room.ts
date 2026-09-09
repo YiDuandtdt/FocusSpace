@@ -9,6 +9,13 @@ import { openPresence, closePresence } from './presence.js';
 import { finishSession, reconnectDeadline } from './session.js';
 import { recentMessages } from './chat.js';
 import { summary, learningFeedback } from './record.js';
+import {
+  DEFAULT_SPACE,
+  readSpace,
+  readCharacter,
+  stableSeed,
+  type SpaceSnapshot,
+} from '@focusspace/shared';
 
 type Tx = Prisma.TransactionClient;
 const include = {
@@ -74,10 +81,30 @@ export async function createRoom(
       do {
         code = Array.from({ length: 6 }, () => alphabet[randomInt(alphabet.length)]).join('');
       } while (await tx.room.findUnique({ where: { code } }));
+      const creator = await tx.user.findUniqueOrThrow({
+        where: { id: userId },
+        include: { personalSpace: true },
+      });
+      const personal =
+        creator.personalSpace ??
+        (await tx.personalSpace.create({
+          data: { userId, config: JSON.stringify(DEFAULT_SPACE) },
+        }));
+      const config = readSpace(personal.config);
+      const roomSpace: SpaceSnapshot = {
+        config,
+        seed: stableSeed(userId),
+        ownerId: userId,
+        ownerName: creator.nickname,
+        sourceRevision: personal.revision,
+      };
       const room = await tx.room.create({
         data: {
           name: input.name,
           visibility: input.visibility ?? 'PRIVATE',
+          theme: config.theme,
+          spaceOwnerId: userId,
+          spaceSnapshot: JSON.stringify(roomSpace),
           code,
           owner: { connect: { id: userId } },
           capacity: ROOM_CAPACITY,
@@ -190,6 +217,7 @@ export async function snapshot(roomId: string, userId: string): Promise<RoomSnap
       visibility: room.visibility as 'PRIVATE' | 'PUBLIC',
       delisted: !!room.delistedAt,
       theme: room.theme as RoomTheme,
+      spaceSnapshot: room.spaceSnapshot ? (JSON.parse(room.spaceSnapshot) as SpaceSnapshot) : null,
     },
     session: {
       id: room.sessionId,
@@ -210,6 +238,10 @@ export async function snapshot(roomId: string, userId: string): Promise<RoomSnap
           userId: m.userId,
           nickname: m.user.nickname,
           avatarId: m.user.avatarId as Member['avatarId'],
+          avatarUrl: m.user.avatarImage
+            ? `/api/avatars/${m.userId}?v=${m.user.avatarVersion}`
+            : null,
+          character: readCharacter(m.user.characterConfig),
           seatIndex: m.seatIndex,
           ready: m.ready,
           afk: m.afk,
@@ -386,6 +418,12 @@ export async function ownerCommand(
       if (room.session.phase === 'ENDED' || member.connectionState !== 'CONNECTED')
         throw new AppError('CONFLICT', '请等待连接恢复，且房间必须仍在进行', 409);
       if (type === 'room:theme') {
+        if (room.spaceSnapshot)
+          throw new AppError(
+            'SPACE_FROZEN',
+            '本次布置已保存。请在个人空间修改，下一次共学生效。',
+            409,
+          );
         if (room.session.phase !== 'LOBBY')
           throw new AppError('INVALID_PHASE', '开始后主题已固定，下次共学再换一个空间', 409);
         await tx.room.update({ where: { id: roomId }, data: { theme: payload.theme } });

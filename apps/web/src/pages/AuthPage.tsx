@@ -12,7 +12,7 @@ export function AuthPage({ register = false }: { register?: boolean }) {
   const returnTo = params.get('next');
   const next =
     returnTo &&
-    /^\/(?:history|admin(?:\/[a-z]+)?|join\/[A-HJ-NP-Z2-9]{6}|rooms\/[^/?#\\]+|sessions\/[^/?#\\]+\/summary)?(?:\?[^#\\]*)?$/.test(
+    /^\/(?:space|history|admin(?:\/[a-z]+)?|join\/[A-HJ-NP-Z2-9]{6}|rooms\/[^/?#\\]+|sessions\/[^/?#\\]+\/summary)?(?:\?[^#\\]*)?$/.test(
       returnTo,
     )
       ? returnTo
@@ -24,7 +24,15 @@ export function AuthPage({ register = false }: { register?: boolean }) {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  if (user) return <Navigate to={next} replace />;
+  if (user)
+    return (
+      <Navigate
+        to={
+          user.onboarding === 'PENDING' ? `/space?setup=1&next=${encodeURIComponent(next)}` : next
+        }
+        replace
+      />
+    );
   async function submit(event: FormEvent) {
     event.preventDefault();
     if (busy) return;
@@ -41,11 +49,20 @@ export function AuthPage({ register = false }: { register?: boolean }) {
           method: 'POST',
           body: { username, password, nickname, avatarId },
         });
-        navigate(`/login?registered=1&next=${encodeURIComponent(next)}`);
-      } else {
         await api('/auth/login', { method: 'POST', body: { username, password } });
         await refresh();
-        navigate(next);
+        navigate(`/space?setup=1&next=${encodeURIComponent(next)}`);
+      } else {
+        const result = await api<{ user: User }>('/auth/login', {
+          method: 'POST',
+          body: { username, password },
+        });
+        await refresh();
+        navigate(
+          result.user.onboarding === 'PENDING'
+            ? `/space?setup=1&next=${encodeURIComponent(next)}`
+            : next,
+        );
       }
     } catch (e) {
       setError(errorMessage(e));

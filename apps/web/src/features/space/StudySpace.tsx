@@ -113,7 +113,12 @@ export const StudySpace = memo(function StudySpace(props: SceneState) {
               >
                 <span className="seat-number">座位 {String(index + 1).padStart(2, '0')}</span>
                 {member ? (
-                  <Avatar small nickname={member.nickname} avatarId={member.avatarId} />
+                  <Avatar
+                    small
+                    nickname={member.nickname}
+                    avatarId={member.avatarId}
+                    avatarUrl={member.avatarUrl}
+                  />
                 ) : (
                   <span className="empty-seat-icon" aria-hidden="true">
                     ＋

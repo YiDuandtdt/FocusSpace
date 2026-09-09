@@ -36,6 +36,7 @@ import { createRealtime } from './realtime/index.js';
 import { advanceRoom, recoverSessions } from './modules/session.js';
 import { summary, history } from './modules/record.js';
 import { retainData } from './modules/retention.js';
+import { personalSpace, savePersonal, decodeAvatar } from './modules/personal.js';
 
 await db.$connect();
 await db.$queryRaw`PRAGMA journal_mode=WAL`;
@@ -127,7 +128,14 @@ app.patch('/api/users/me', async (req, res) => {
   const user = await serialize(async () => {
     const auth = await authenticate(req.headers.cookie);
     const result = await db.$transaction(async (tx) => {
-      const user = await tx.user.update({ where: { id: auth.userId }, data: input });
+      const { removeAvatar, ...profile } = input;
+      const user = await tx.user.update({
+        where: { id: auth.userId },
+        data: {
+          ...profile,
+          ...(removeAvatar ? { avatarImage: null, avatarVersion: { increment: 1 } } : {}),
+        },
+      });
       const roomId = await currentRoom(auth.userId, tx);
       if (roomId) await bump(tx, roomId);
       return { user, roomId };
@@ -136,6 +144,54 @@ app.patch('/api/users/me', async (req, res) => {
     return publicUser(result.user);
   });
   res.json({ user });
+});
+app.get('/api/users/me/space', async (req, res) => {
+  const auth = await authenticate(req.headers.cookie);
+  res.json(await personalSpace(auth.userId));
+});
+app.put('/api/users/me/space', async (req, res) => {
+  const result = await serialize(async () => {
+    const auth = await authenticate(req.headers.cookie);
+    const personal = await savePersonal(auth.userId, req.body);
+    const roomId = await currentRoom(auth.userId);
+    if (roomId) await realtime.broadcast(roomId);
+    return personal;
+  });
+  res.json(result);
+});
+app.post(
+  '/api/users/me/avatar',
+  express.raw({ type: ['image/png', 'image/jpeg', 'image/webp'], limit: '2mb' }),
+  async (req, res) => {
+    await authenticate(req.headers.cookie);
+    const avatarImage = await decodeAvatar(
+      req.body,
+      req.headers['content-type']?.split(';')[0] ?? '',
+    );
+    const user = await serialize(async () => {
+      const auth = await authenticate(req.headers.cookie);
+      const user = await db.user.update({
+        where: { id: auth.userId },
+        data: { avatarImage, avatarVersion: { increment: 1 } },
+      });
+      const roomId = await currentRoom(auth.userId);
+      if (roomId) {
+        await bump(db, roomId);
+        await realtime.broadcast(roomId);
+      }
+      return publicUser(user);
+    });
+    res.json({ user });
+  },
+);
+app.get('/api/avatars/:id', async (req, res) => {
+  await authenticate(req.headers.cookie);
+  const user = await db.user.findUnique({
+    where: { id: req.params.id as string },
+    select: { avatarImage: true },
+  });
+  if (!user?.avatarImage) throw new AppError('NOT_FOUND', '头像不存在', 404);
+  res.type('png').send(Buffer.from(user.avatarImage));
 });
 app.post('/api/rooms', async (req, res) => {
   const input = createRoomSchema.parse(req.body);
@@ -274,6 +330,12 @@ if (existsSync(webPath)) {
   });
 }
 const handleError: ErrorRequestHandler = (error, _req, res, _next) => {
+  if (error?.type === 'entity.too.large') {
+    res
+      .status(413)
+      .json({ error: { code: 'VALIDATION_ERROR', message: '文件或请求过大，头像最多 2 MB' } });
+    return;
+  }
   const malformed = error instanceof SyntaxError && 'body' in error;
   const detail = malformed
     ? { code: 'VALIDATION_ERROR', message: '请求格式无效' }

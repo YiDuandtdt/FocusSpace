@@ -1,5 +1,7 @@
 # FocusSpace
 
+个人空间升级（2026-09-09）：首页/顶部「个人空间」可编辑长期保存的虚拟形象与自习室，账号头像独立上传；新共学复制发起人的布置快照。见 [v1.1 PRD](Doc/FocusSpace_产品需求文档_PRD_v1.1.md) 与 [本阶段交付、迁移及截图](Doc/阶段交付_个人空间与卡通低模.md)。升级前先备份数据库，再 `npm run setup`、`npm run build`。当前体验入口 `http://localhost:3001/space`；如切换到 `npm run start:local` 的 3002 端口，先停止原服务，同一数据库只运行一个实例。定向验证：`npm run test:personal`。
+
 各自学习，一起专注。已完成共学、学习反馈、公开房间和管理员系统；第七阶段新增三种同步房间主题、四条真实环境录音、专注/全屏视图及移动端体验完善。实现依据见 `Doc` 中的 PRD 与开发设计文档。
 
 本轮体验：`npm run setup` → `npm run build` → `npm run start:local`，打开 [http://localhost:3002](http://localhost:3002)。房主在大厅选择「窗边雨天 / 暖灯夜读 / 明亮图书馆」，开始后主题固定；个人环境声默认关闭。完整功能、演示路线、验证与限制见 [第七阶段交付说明](Doc/阶段交付_沉浸体验与产品交付.md)。

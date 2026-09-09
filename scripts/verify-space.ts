@@ -140,6 +140,11 @@ try {
     requestId: crypto.randomUUID(),
   });
   roomId = room.roomId;
+  // This suite retains coverage of legacy mutable themes; test:personal covers frozen new rooms.
+  await database.room.update({
+    where: { id: roomId },
+    data: { spaceSnapshot: null, spaceOwnerId: null, theme: 'rain' },
+  });
   await command(owner, 'room:join');
   for (const person of people.slice(1)) {
     await api('/rooms/join', person, { code: room.code, requestId: crypto.randomUUID() });
@@ -150,15 +155,17 @@ try {
   const member = snapshot.members[0]!;
   const model = createAvatar(member);
   model.update({ ...member, status: 'FOCUSING' });
+  model.animate(0, true);
   assert(model.root.children[0]!.rotation.x > 0);
   model.update({ ...member, status: 'BREAKING' });
+  model.animate(1, true);
   assert(model.root.children[0]!.rotation.x < 0);
   model.update({ ...member, status: 'AFK' });
   assert.equal(model.root.visible, false);
   model.update({ ...member, status: 'DISCONNECTED' });
   assert.equal(model.root.visible, true);
   model.root.traverse((object) => {
-    if ('material' in object) assert.equal((object.material as { opacity: number }).opacity, 0.32);
+    if ('material' in object) assert.equal((object.material as { opacity: number }).opacity, 0.38);
   });
   model.dispose();
   const edge = 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
@@ -282,8 +289,8 @@ try {
       return await Promise.all(
         ['rain', 'fire', 'birds', 'stream'].map(async (id) => {
           const response = await fetch('/audio/' + id + '.mp3');
-        const bytes = await response.arrayBuffer();
-        const byteLength = bytes.byteLength;
+          const bytes = await response.arrayBuffer();
+          const byteLength = bytes.byteLength;
           const buffer = await context.decodeAudioData(bytes);
           const samples = buffer.getChannelData(0);
           let energy = 0,
@@ -294,7 +301,7 @@ try {
           }
           return {
             id,
-          bytes: byteLength,
+            bytes: byteLength,
             duration: buffer.duration,
             rms: Math.sqrt(energy / samples.length),
             peak,
@@ -542,7 +549,7 @@ try {
       priorCanvas: document.querySelector('canvas'),
     }),
   );
-  await pageA.getByRole('link', { name: '我的空间', exact: true }).click();
+  await pageA.getByRole('link', { name: '共学首页', exact: true }).click();
   assert(
     await pageA.evaluate(
       () =>
