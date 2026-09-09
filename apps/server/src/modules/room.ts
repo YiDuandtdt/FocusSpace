@@ -1,6 +1,6 @@
 import { randomInt } from 'node:crypto';
 import { Prisma } from '@prisma/client';
-import { ROOM_CAPACITY, type RoomSnapshot, type Member } from '@focusspace/shared';
+import { ROOM_CAPACITY, type RoomSnapshot, type Member, type RoomTheme } from '@focusspace/shared';
 import { db } from '../db.js';
 import { AppError } from '../errors.js';
 import { digest } from './auth.js';
@@ -189,6 +189,7 @@ export async function snapshot(roomId: string, userId: string): Promise<RoomSnap
       capacity: room.capacity,
       visibility: room.visibility as 'PRIVATE' | 'PUBLIC',
       delisted: !!room.delistedAt,
+      theme: room.theme as RoomTheme,
     },
     session: {
       id: room.sessionId,
@@ -371,7 +372,12 @@ export async function ownerCommand(
   roomId: string,
   requestId: string,
   type: string,
-  payload: { targetId?: string; leave?: boolean; visibility?: 'PRIVATE' | 'PUBLIC' },
+  payload: {
+    targetId?: string;
+    leave?: boolean;
+    visibility?: 'PRIVATE' | 'PUBLIC';
+    theme?: RoomTheme;
+  },
 ) {
   return db.$transaction((tx) =>
     receipt(tx, userId, requestId, type, { roomId, payload }, async () => {
@@ -379,7 +385,12 @@ export async function ownerCommand(
       if (room.ownerId !== userId) throw new AppError('FORBIDDEN', '只有当前房主可以操作', 403);
       if (room.session.phase === 'ENDED' || member.connectionState !== 'CONNECTED')
         throw new AppError('CONFLICT', '请等待连接恢复，且房间必须仍在进行', 409);
-      if (type === 'room:transfer') {
+      if (type === 'room:theme') {
+        if (room.session.phase !== 'LOBBY')
+          throw new AppError('INVALID_PHASE', '开始后主题已固定，下次共学再换一个空间', 409);
+        await tx.room.update({ where: { id: roomId }, data: { theme: payload.theme } });
+        await bump(tx, roomId);
+      } else if (type === 'room:transfer') {
         await transferOwner(tx, roomId, userId, payload.targetId);
         if (payload.leave) await leaveMember(tx, roomId, userId, 'TRANSFER_LEFT');
       } else {

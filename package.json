@@ -27,6 +27,7 @@
     "test:session": "tsx scripts/verify-session.ts",
     "test:space": "tsx scripts/verify-space.ts",
     "audio:generate": "node scripts/generate-ambience.mjs",
+    "audio:prepare": "node scripts/prepare-ambience.mjs",
     "test:feedback": "tsx scripts/verify-feedback.ts",
     "admin:init": "node --env-file=.env scripts/init-admin.mjs",
     "test:admin": "tsx scripts/verify-admin.ts",

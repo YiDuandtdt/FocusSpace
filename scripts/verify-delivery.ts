@@ -402,11 +402,11 @@ try {
   await pageA.getByRole('button', { name: '使用 45/15 秒演示节奏' }).click();
   await expect(pageB.getByText('秒专注 · 演示')).toBeVisible();
   await expect(pageA.locator('.scene-host canvas')).toBeVisible();
-  await pageA.getByRole('button', { name: '播放雨声', exact: true }).click();
+  await pageA.getByRole('button', { name: '播放环境声', exact: true }).click();
   await expect
     .poll(() => pageA.locator('audio').evaluate((audio: HTMLAudioElement) => audio.currentTime))
     .toBeGreaterThan(0.2);
-  await pageA.getByRole('button', { name: '暂停雨声', exact: true }).click();
+  await pageA.getByRole('button', { name: '暂停环境声', exact: true }).click();
   assert.equal((await fetch(`${base}/audio/missing.wav`)).status, 404);
   assert.equal((await fetch(`${base}/assets/missing.js`)).status, 404);
   assert.equal((await fetch(`${base}/api/missing`)).status, 404);

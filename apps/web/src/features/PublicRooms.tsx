@@ -5,6 +5,7 @@ import { api, errorMessage, roomRequest } from '../api';
 import { createRequestId } from '../requestId';
 import { useAuth } from '../auth';
 import { Notice } from '../components';
+import { themes } from './space/themes';
 export const phaseNames = {
   LOBBY: '等待开始',
   FOCUS: '正在专注',
@@ -81,12 +82,12 @@ export function PublicRooms() {
         }}
       >
         <label>
-          房间主题
+          房间名称
           <input
             value={q}
             maxLength={80}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="搜索主题"
+            placeholder="搜索房间名称"
           />
         </label>
         <label>
@@ -113,7 +114,8 @@ export function PublicRooms() {
       ) : null}
       <div className="public-grid">
         {data?.items.map((r) => (
-          <article className="panel public-card" key={r.id}>
+          <article className="panel public-card" key={r.id} data-theme={r.theme}>
+            <span className="theme-badge">{themes[r.theme].name}</span>
             <span className="eyebrow">
               {phaseNames[r.phase]} · {r.members}/{r.capacity} 人
             </span>

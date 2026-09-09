@@ -1,10 +1,18 @@
 import * as THREE from 'three';
-import type { Member, Phase } from '@focusspace/shared';
+import type { Member, Phase, RoomTheme } from '@focusspace/shared';
+import { themes } from './themes';
 import { createAvatar, type AvatarModel } from './AvatarModel';
 import { geometryKit } from './geometry';
 import { memberLabels, memberSymbols, SEATS } from './memberPresentation';
 
-export type SceneState = { members: Member[]; phase: Phase; userId?: string };
+export type SceneState = {
+  members: Member[];
+  phase: Phase;
+  userId?: string;
+  theme: RoomTheme;
+  reducedMotion?: boolean;
+  completedUsers?: string[];
+};
 export type StudyRoomScene = { update(state: SceneState): void; dispose(): void };
 
 export function createStudyRoomScene(host: HTMLDivElement, onFailure: () => void): StudyRoomScene {
@@ -38,6 +46,14 @@ export function createStudyRoomScene(host: HTMLDivElement, onFailure: () => void
   let lastFrame = -Infinity;
   let inView = true;
   let phase: Phase = 'LOBBY';
+  let theme: RoomTheme = 'rain';
+  let reducedMotion = false;
+  const rain = new THREE.Group();
+  const night = new THREE.Group();
+  const library = new THREE.Group();
+  const fill = new THREE.HemisphereLight('#fff7e7', '#a2ac93', 2);
+  const lamp = new THREE.PointLight('#ffcc88', 0, 7, 2);
+  lamp.position.set(0, 2.4, 0);
   const motion = window.matchMedia('(prefers-reduced-motion: reduce)');
   const background = new THREE.Color('#e8e4d8');
   const targetBackground = background.clone();
@@ -70,12 +86,19 @@ export function createStudyRoomScene(host: HTMLDivElement, onFailure: () => void
   function draw(now: number) {
     frame = 0;
     if (disposed || document.hidden || !inView) return;
-    if (now - lastFrame >= 1000 / 30 || motion.matches) {
-      const blend = motion.matches ? 1 : 1 - Math.exp(-Math.min((now - lastFrame) / 1000, 0.1) * 3);
+    const reduced = motion.matches || reducedMotion;
+    if (now - lastFrame >= 1000 / 30 || reduced) {
+      const blend = reduced ? 1 : 1 - Math.exp(-Math.min((now - lastFrame) / 1000, 0.1) * 3);
       lastFrame = now;
       background.lerp(targetBackground, blend);
-      daylight.intensity += ((phase === 'BREAK' ? 1.7 : 2.4) - daylight.intensity) * blend;
-      avatars.forEach(({ model }) => model.animate(now / 1000, motion.matches));
+      daylight.intensity +=
+        (themes[theme].intensity * (phase === 'BREAK' ? 0.88 : 1) - daylight.intensity) * blend;
+      rain.children.forEach((drop, index) => {
+        drop.position.y = reduced
+          ? 1.3 + (index % 5) * 0.34
+          : 3.02 - ((index * 0.37 + now / 2600) % 1) * 1.85;
+      });
+      avatars.forEach(({ model }) => model.animate(now / 1000, reduced));
       try {
         renderer?.render(scene, camera);
       } catch {
@@ -83,7 +106,7 @@ export function createStudyRoomScene(host: HTMLDivElement, onFailure: () => void
         return;
       }
     }
-    if (!motion.matches) frame = requestAnimationFrame(draw);
+    if (!reduced) frame = requestAnimationFrame(draw);
   }
   function resume() {
     cancelAnimationFrame(frame);
@@ -124,7 +147,7 @@ export function createStudyRoomScene(host: HTMLDivElement, onFailure: () => void
     };
     renderer.setClearColor(background);
     host.append(canvas);
-    scene.add(new THREE.HemisphereLight('#fff7e7', '#a2ac93', 2), daylight);
+    scene.add(fill, daylight, lamp, rain, night, library);
     const mesh = kit.mesh;
     mesh(scene, 'box', '#c6b292', [0, -0.15, 0], [9.6, 0.3, 6.6]);
     // Thin floor inlays and an inset woven rug provide depth without shadow maps.
@@ -134,6 +157,23 @@ export function createStudyRoomScene(host: HTMLDivElement, onFailure: () => void
     mesh(scene, 'box', '#e7dfcf', [0, 1.8, -3.25], [9.6, 3.6, 0.16]);
     mesh(scene, 'box', '#d4cbb7', [-4.72, 1.8, 0], [0.16, 3.6, 6.6]);
     mesh(scene, 'box', '#c1d4ce', [-1.2, 2.12, -3.14], [4.8, 2.12, 0.05]);
+    for (let i = 0; i < 18; i++)
+      mesh(
+        rain,
+        'box',
+        '#a7c3ca',
+        [-3.45 + i * 0.25, 1.3, -3.095],
+        [0.012, 0.12 + (i % 3) * 0.035, 0.01],
+      );
+    mesh(night, 'sphere', '#f4deb2', [0.5, 2.73, -3.08], [0.2, 0.2, 0.025]);
+    for (let i = 0; i < 4; i++)
+      mesh(
+        library,
+        'box',
+        ['#83957b', '#cbb78f'][i % 2]!,
+        [2.8, 1.96 + i * 0.1, -2.8],
+        [0.65, 0.09, 0.4],
+      );
     for (const x of [-3.65, -1.2, 1.25])
       mesh(scene, 'box', '#f7f0de', [x, 2.12, -3.06], [0.1, 2.28, 0.12]);
     for (const y of [1.01, 2.12, 3.23])
@@ -221,7 +261,21 @@ export function createStudyRoomScene(host: HTMLDivElement, onFailure: () => void
     update(state) {
       if (disposed) return;
       phase = state.phase;
-      targetBackground.set(phase === 'BREAK' ? '#dce7d8' : '#e8e4d8');
+      theme = state.theme;
+      reducedMotion = !!state.reducedMotion;
+      const palette = themes[theme];
+      targetBackground.set(palette.background);
+      kit.material('#e7dfcf').color.set(palette.wall);
+      kit.material('#d4cbb7').color.set(palette.side);
+      kit.material('#c1d4ce').color.set(palette.window);
+      kit.material('#a8b5a0').color.set(palette.rug);
+      kit.material('#d6b88a').color.set(palette.desk);
+      daylight.color.set(palette.light);
+      fill.intensity = theme === 'night' ? 1.25 : 2;
+      lamp.intensity = theme === 'night' ? 9 : 1;
+      rain.visible = theme === 'rain';
+      night.visible = theme === 'night';
+      library.visible = theme === 'library';
       const active = new Set(state.members.map((member) => member.userId));
       avatars.forEach(({ model }, id) => {
         if (!active.has(id)) {
@@ -235,6 +289,9 @@ export function createStudyRoomScene(host: HTMLDivElement, onFailure: () => void
         label.className = `scene-seat-label ${member ? 'is-occupied' : 'is-empty'} ${member?.userId === state.userId ? 'is-me' : ''}`;
         label.dataset.status = member?.status ?? 'EMPTY';
         label.dataset.userId = member?.userId ?? '';
+        label.dataset.completed = String(
+          state.completedUsers?.includes(member?.userId ?? '') ?? false,
+        );
         label.replaceChildren();
         const name = document.createElement('strong');
         name.textContent = `${String(seat.index + 1).padStart(2, '0')} · ${member ? member.nickname + (member.userId === state.userId ? ' · 你' : '') : '空座'}`;
@@ -243,6 +300,8 @@ export function createStudyRoomScene(host: HTMLDivElement, onFailure: () => void
           ? `${memberSymbols[member.status]} ${memberLabels[member.status]}`
           : '等一位学习搭子';
         label.append(name, status);
+        if (state.completedUsers?.includes(member?.userId ?? ''))
+          status.textContent = '✓ 完成了一个任务';
         label.title = `${name.textContent} · ${status.textContent}`;
         if (!member) return;
         let avatar = avatars.get(member.userId);

@@ -4,6 +4,7 @@ import { memberLabels, memberSymbols, SEATS } from './memberPresentation';
 import type { SceneState, StudyRoomScene } from './StudyRoomScene';
 
 import { readPreferences, savePreferences } from '../../preferences';
+import { themes } from './themes';
 
 export const StudySpace = memo(function StudySpace(props: SceneState) {
   const host = useRef<HTMLDivElement>(null);
@@ -63,7 +64,7 @@ export const StudySpace = memo(function StudySpace(props: SceneState) {
       <div className="space-view-controls">
         <div>
           <span className="eyebrow">THE READING ROOM</span>
-          <strong>窗边自习室</strong>
+          <strong>{themes[props.theme].name}</strong>
         </div>
         <button
           className="text-button"
@@ -87,13 +88,13 @@ export const StudySpace = memo(function StudySpace(props: SceneState) {
       ) : null}
       {!cards && !failed && !loaded ? (
         <p className="space-loading" role="status">
-          正在打开窗边自习室…
+          正在打开{themes[props.theme].name}…
         </p>
       ) : null}
       <div
         ref={host}
         className="scene-host"
-        aria-label="窗边自习室成员座位"
+        aria-label={`${themes[props.theme].name}成员座位`}
         role="group"
         hidden={fallback}
       />
@@ -108,6 +109,7 @@ export const StudySpace = memo(function StudySpace(props: SceneState) {
                 data-seat={index}
                 data-user-id={member?.userId ?? ''}
                 data-status={member?.status ?? 'EMPTY'}
+                data-completed={props.completedUsers?.includes(member?.userId ?? '') || undefined}
               >
                 <span className="seat-number">座位 {String(index + 1).padStart(2, '0')}</span>
                 {member ? (
@@ -126,6 +128,7 @@ export const StudySpace = memo(function StudySpace(props: SceneState) {
                   {member
                     ? `${memberSymbols[member.status]} ${memberLabels[member.status]}`
                     : '空座'}
+                  {props.completedUsers?.includes(member?.userId ?? '') ? ' · ✓ 完成任务' : ''}
                 </small>
               </div>
             );

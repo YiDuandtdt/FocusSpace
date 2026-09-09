@@ -4,6 +4,7 @@ import { Server, type Socket } from 'socket.io';
 import { z } from 'zod';
 import {
   commandSchema,
+  roomThemeSchema,
   rhythmSchema,
   demoRhythmSchema,
   type Ack,
@@ -157,6 +158,7 @@ export function createRealtime(server: HttpServer) {
       'room:configure',
       'room:transfer',
       'room:visibility',
+      'room:theme',
       'session:start',
       'session:end',
       'task:create',
@@ -221,7 +223,15 @@ export function createRealtime(server: HttpServer) {
                 subscriptions.get(socket.id)?.roomId !== input.roomId
               )
                 throw new AppError('FORBIDDEN', '请先连接房间', 403);
-              if (type === 'room:transfer' || type === 'room:visibility') {
+              if (type === 'room:theme') {
+                await ownerCommand(
+                  auth.userId,
+                  input.roomId,
+                  requestId,
+                  type,
+                  roomThemeSchema.parse(input.payload),
+                );
+              } else if (type === 'room:transfer' || type === 'room:visibility') {
                 const payload =
                   type === 'room:transfer'
                     ? z

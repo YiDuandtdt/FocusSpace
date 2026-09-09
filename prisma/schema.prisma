@@ -57,6 +57,7 @@ model Room {
   sessionId String @unique
   session   StudySession @relation(fields: [sessionId], references: [id])
   visibility String @default("PRIVATE")
+  theme      String @default("rain")
   delistedAt DateTime?
   capacity  Int @default(8)
   revision  Int @default(1)

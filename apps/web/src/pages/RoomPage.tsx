@@ -12,6 +12,9 @@ import { Encouragement } from '../features/Encouragement';
 import { OwnerControls } from '../features/OwnerControls';
 import { AmbientAudio } from '../features/audio/AmbientAudio';
 import { memberLabels as stateLabels } from '../features/space/memberPresentation';
+import { ROOM_THEMES } from '@focusspace/shared';
+import { themes } from '../features/space/themes';
+import { useImmersion } from '../features/space/useImmersion';
 
 export function RoomPage() {
   const { roomId = '' } = useParams();
@@ -25,6 +28,8 @@ export function RoomPage() {
   const [actionError, setActionError] = useState('');
   const [copied, setCopied] = useState(false);
   const [confirmLeave, setConfirmLeave] = useState(false);
+  const immersion = useImmersion(user!.id, removed || data?.session.phase === 'ENDED');
+  const [showChat, setShowChat] = useState(false);
   async function perform(type: RoomCommand, payload: unknown = {}) {
     if (busy) return false;
     setBusy(true);
@@ -84,7 +89,11 @@ export function RoomPage() {
   const writable = status === 'online' && !busy && !ended;
   const online = data.members.filter((m) => m.connectionState === 'CONNECTED').length;
   return (
-    <div className={`room-page phase-${data.session.phase}`}>
+    <div
+      ref={immersion.root}
+      data-theme={data.room.theme}
+      className={`room-page phase-${data.session.phase} ${immersion.active ? 'focus-view' : ''} ${immersion.reduced ? 'reduce-motion' : ''} ${showChat ? 'show-focus-chat' : ''}`}
+    >
       <div className="room-breadcrumb">
         <Link to="/">我的空间</Link>
         <span>/</span>
@@ -142,7 +151,7 @@ export function RoomPage() {
       </div>
       {!ended ? (
         <button
-          className="text-button"
+          className="text-button invitation-link"
           onClick={() =>
             void copyText(window.location.origin + '/join/' + data.room.code)
               .then(() => setActionError('邀请链接已复制'))
@@ -158,10 +167,92 @@ export function RoomPage() {
       ) : null}
       {actionError ? <Notice>{actionError}</Notice> : null}
       {data.summary ? <SummaryPanel summary={data.summary} /> : null}
+      {!ended ? (
+        <div className="immersion-toolbar" aria-label="空间体验控制">
+          <span className="theme-badge">{themes[data.room.theme].name}</span>
+          <button
+            className="button secondary"
+            aria-pressed={immersion.active}
+            onClick={immersion.toggleFocus}
+          >
+            {immersion.active ? '返回完整界面' : '专注视图'}
+          </button>
+          <button
+            className="text-button fullscreen-control"
+            onClick={() => void immersion.toggleFullscreen()}
+          >
+            {immersion.fullscreen ? '退出全屏' : '全屏专注'}
+          </button>
+          <button
+            className="text-button"
+            aria-pressed={immersion.reduced}
+            onClick={immersion.toggleReduced}
+          >
+            {immersion.reduced ? '动态已减少' : '减少动态'}
+          </button>
+          {immersion.active ? (
+            <button
+              className="text-button"
+              aria-expanded={showChat}
+              onClick={() => setShowChat(!showChat)}
+            >
+              {showChat ? '收起聊天' : '打开休息聊天'}
+            </button>
+          ) : null}
+          <button
+            className="text-button toolbar-leave"
+            disabled={!writable}
+            onClick={() => setConfirmLeave(true)}
+          >
+            {data.myPermissions.isOwner ? '结束共学' : '离开房间'}
+          </button>
+        </div>
+      ) : null}
+      {immersion.notice ? (
+        <p className="immersion-notice" role="status">
+          {immersion.notice}
+        </p>
+      ) : null}
+      {lobby ? (
+        <section className="theme-picker" aria-label="房间主题">
+          <div className="panel-heading">
+            <h2>选一处，安静坐下</h2>
+            <small>
+              {data.myPermissions.isOwner
+                ? '开始后固定 · 不改变个人声音'
+                : '由房主选择 · 所有成员同步'}
+            </small>
+          </div>
+          <div className="theme-options">
+            {ROOM_THEMES.map((theme) => (
+              <button
+                key={theme}
+                data-theme={theme}
+                aria-pressed={data.room.theme === theme}
+                disabled={!writable || !data.myPermissions.canConfigure}
+                onClick={() => void perform('room:theme', { theme })}
+              >
+                <span className="theme-window" aria-hidden="true">
+                  <i />
+                  <i />
+                </span>
+                <strong>
+                  {themes[theme].name}
+                  {data.room.theme === theme ? ' ✓' : ''}
+                </strong>
+                <small>{themes[theme].description}</small>
+              </button>
+            ))}
+          </div>
+        </section>
+      ) : null}
       <nav className="room-shortcuts" aria-label="房间快捷入口">
         <a href="#room-space">空间与计时</a>
         <a href="#room-tasks">我的任务</a>
-        <a href="#room-chat">{data.session.phase === 'BREAK' ? '聊天 · 已开放' : '休息聊天'}</a>
+        <a href="#room-chat" onClick={() => setShowChat(true)}>
+          {data.session.phase === 'BREAK' ? '聊天 · 已开放' : '休息聊天'}
+        </a>
+        {!ended ? <a href="#room-audio">声音</a> : null}
       </nav>
       <div className="room-grid">
         <div className="room-main">
@@ -188,6 +279,11 @@ export function RoomPage() {
               members={data.members}
               phase={data.session.phase}
               userId={user?.id}
+              theme={data.room.theme}
+              reducedMotion={immersion.reduced}
+              completedUsers={lights
+                .filter((light) => light.symbol === '✓')
+                .map((light) => light.userId)}
             />
             <div className="light-feedback" aria-live="off">
               {lights.map((light) => (
@@ -207,7 +303,9 @@ export function RoomPage() {
                     : (data.myPermissions.startDisabledReason ?? '成员已准备，可以开始共学。')}
               </p>
             ) : null}
-            {!ended ? <AmbientAudio key={`audio-${roomId}`} /> : null}
+            {!ended ? (
+              <AmbientAudio key={`audio-${roomId}`} recommended={themes[data.room.theme].sound} />
+            ) : null}
             <div className="lobby-controls">
               <div>
                 <strong>
@@ -268,7 +366,7 @@ export function RoomPage() {
               command={command}
             />
           </div>
-          <div id="room-chat">
+          <div id="room-chat" className="focus-chat">
             <ChatPanel
               key={user!.id + roomId}
               data={data}
@@ -348,14 +446,6 @@ export function RoomPage() {
                 ? '本次结果已保存，继续共学请新建房间。'
                 : '共享节奏由房间统一推进，刷新后恢复当前轮次。'}
           </p>
-          <button
-            className="text-button leave-button"
-            disabled={!writable}
-            onClick={() => setConfirmLeave(true)}
-          >
-            {data.myPermissions.isOwner ? '结束共学' : '离开房间'}{' '}
-            <span aria-hidden="true">↗</span>
-          </button>
         </aside>
       </div>
       {confirmLeave ? (
@@ -372,7 +462,7 @@ export function RoomPage() {
           </h2>
           <p className="muted">
             {data.myPermissions.isOwner
-              ? '这会结束所有人的共学并结算全房。如仅自己离开，请取消并使用“转交后自己离开”。'
+              ? '这会结束所有人的共学并结算全房。如仅自己离开，请取消，返回完整界面使用“转交后自己离开”。'
               : '你的座位会被释放，之后可以用房间码重新加入。'}
           </p>
           <div className="dialog-actions">

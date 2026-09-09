@@ -12,6 +12,7 @@ import { AdminPage } from './pages/AdminPage';
 import { SummaryPage } from './pages/SummaryPage';
 import './styles.css';
 import './features/space/space.css';
+import './features/space/immersion.css';
 
 function Protected({ children }: { children: ReactNode }) {
   const { user } = useAuth();

@@ -1,12 +1,24 @@
 import { useState } from 'react';
 import { rhythmSchema } from '@focusspace/shared';
+import { isTrackId, type TrackId } from './features/audio/tracks';
 export type Preferences = {
   focusSeconds: number;
   breakSeconds: number;
   volume: number;
   cards: boolean;
+  sound: TrackId;
+  focusView: boolean;
+  reducedMotion: boolean;
 };
-const defaults: Preferences = { focusSeconds: 1500, breakSeconds: 300, volume: 35, cards: false };
+const defaults: Preferences = {
+  focusSeconds: 1500,
+  breakSeconds: 300,
+  volume: 35,
+  cards: false,
+  sound: 'rain',
+  focusView: false,
+  reducedMotion: false,
+};
 export function readPreferences(userId: string): Preferences {
   try {
     const p = JSON.parse(localStorage.getItem('focusspace:preferences:v1:' + userId) ?? '{}');
@@ -16,6 +28,9 @@ export function readPreferences(userId: string): Preferences {
       ...(rhythm.success ? rhythm.data : {}),
       volume: Number.isInteger(p.volume) && p.volume >= 0 && p.volume <= 100 ? p.volume : 35,
       cards: p.cards === true,
+      sound: isTrackId(p.sound) ? p.sound : 'rain',
+      focusView: p.focusView === true,
+      reducedMotion: p.reducedMotion === true,
     };
   } catch {
     return { ...defaults };

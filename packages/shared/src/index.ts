@@ -2,6 +2,9 @@ import { z } from 'zod';
 
 export const AVATARS = ['lake', 'sage', 'lilac', 'sun'] as const;
 export const ROOM_CAPACITY = 8;
+export const ROOM_THEMES = ['rain', 'night', 'library'] as const;
+export type RoomTheme = (typeof ROOM_THEMES)[number];
+export const roomThemeSchema = z.object({ theme: z.enum(ROOM_THEMES) }).strict();
 export const credentialsSchema = z.object({
   username: z
     .string()
@@ -100,6 +103,7 @@ export type RoomSnapshot = {
     capacity: number;
     visibility: 'PRIVATE' | 'PUBLIC';
     delisted: boolean;
+    theme: RoomTheme;
   };
   session: {
     id: string;
@@ -153,6 +157,7 @@ export type RoomCommand =
   | 'room:configure'
   | 'room:transfer'
   | 'room:visibility'
+  | 'room:theme'
   | 'member:ready'
   | 'member:afk'
   | 'member:leave'
@@ -242,6 +247,7 @@ export type HistoryPage = {
 
 export type Page<T> = { items: T[]; page: number; pageSize: number; total: number };
 export type PublicRoom = {
+  theme: RoomTheme;
   id: string;
   name: string;
   members: number;

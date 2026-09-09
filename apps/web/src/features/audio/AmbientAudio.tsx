@@ -1,76 +1,102 @@
 import { useEffect, useRef, useState } from 'react';
-
 import { useAuth } from '../../auth';
 import { readPreferences, savePreferences } from '../../preferences';
+import { tracks, isTrackId, type TrackId } from './tracks';
 
-export function AmbientAudio() {
+export function AmbientAudio({ recommended }: { recommended: string }) {
   const { user } = useAuth();
   const audio = useRef<HTMLAudioElement>(null);
-  const alive = useRef(true);
+  const generation = useRef(0);
   const [playing, setPlaying] = useState(false);
   const [pending, setPending] = useState(false);
+  const [sound, setSound] = useState(() => readPreferences(user!.id).sound);
   const [volume, setVolume] = useState(() => readPreferences(user!.id).volume);
   const [error, setError] = useState('');
   useEffect(() => {
-    alive.current = true;
     const element = audio.current!;
-    element.src = '/audio/window-rain.wav';
     element.volume = readPreferences(user!.id).volume / 100;
     return () => {
-      alive.current = false;
+      generation.current++;
       element.pause();
       element.removeAttribute('src');
       element.load();
     };
-  }, []);
-  async function toggle() {
-    const element = audio.current;
-    if (!element) return;
-    if (!element.paused) {
-      element.pause();
-      return;
-    }
+  }, [user!.id]);
+  async function play(id: TrackId) {
+    const element = audio.current!;
+    const version = ++generation.current;
     setPending(true);
     setError('');
+    const src = tracks.find((track) => track.id === id)!.src;
+    if (element.getAttribute('src') !== src) element.src = src;
+    else if (element.error) element.load();
     try {
-      if (element.error) element.load();
       await element.play();
-      if (!alive.current) element.pause();
     } catch {
-      if (alive.current) setError('雨声未能播放，请检查声音设置或网络后重试。');
+      if (version === generation.current)
+        setError('环境声未能播放，请检查网络或浏览器声音设置后重试。');
     } finally {
-      if (alive.current) setPending(false);
+      if (version === generation.current) setPending(false);
     }
   }
+  function pause() {
+    generation.current++;
+    audio.current?.pause();
+    setPending(false);
+  }
+  function select(id: TrackId) {
+    const resume = playing || pending;
+    pause();
+    setSound(id);
+    setError('');
+    audio.current?.removeAttribute('src');
+    audio.current?.load();
+    if (resume) void play(id);
+    if (!savePreferences(user!.id, { sound: id })) setError('声音已切换，但浏览器未允许保存偏好。');
+  }
   return (
-    <div className="ambient-audio" aria-label="个人环境音">
+    <section className="ambient-audio" id="room-audio" aria-label="个人环境音">
       <audio
         ref={audio}
-        src="/audio/window-rain.wav"
         loop
         preload="none"
-        onPlay={() => setPlaying(true)}
+        onPlaying={() => {
+          setPlaying(true);
+          setPending(false);
+        }}
         onPause={() => setPlaying(false)}
         onError={() => {
           setPlaying(false);
           setPending(false);
-          setError('雨声资源加载失败，可重试播放。');
+          setError('环境声资源加载失败，请重新播放或选择其他声音。');
         }}
       />
-      <div className="audio-title">
-        <span aria-hidden="true">☂</span>
-        <div>
-          <strong>窗边雨声</strong>
-          <small>仅自己听见 · 合成环境音</small>
-        </div>
-      </div>
+      <label className="audio-title">
+        <span aria-hidden="true">♫</span>
+        <span>
+          环境声
+          <select
+            aria-label="选择环境声"
+            value={sound}
+            onChange={(e) => {
+              if (isTrackId(e.target.value)) select(e.target.value);
+            }}
+          >
+            {tracks.map((track) => (
+              <option value={track.id} key={track.id}>
+                {track.name}
+              </option>
+            ))}
+          </select>
+          <small>仅自己听见 · 默认关闭 · 循环播放</small>
+        </span>
+      </label>
       <button
         className="button secondary"
-        onClick={() => void toggle()}
-        disabled={pending}
+        onClick={() => (playing || pending ? pause() : void play(sound))}
         aria-pressed={playing}
       >
-        {pending ? '正在加载…' : playing ? '暂停雨声' : '播放雨声'}
+        {pending ? '取消加载' : playing ? '暂停环境声' : '播放环境声'}
       </button>
       <label className="audio-volume">
         音量 <output>{volume}%</output>
@@ -84,17 +110,23 @@ export function AmbientAudio() {
           onChange={(event) => {
             const value = Number(event.target.value);
             setVolume(value);
+            if (audio.current) audio.current.volume = value / 100;
             if (!savePreferences(user!.id, { volume: value }))
               setError('音量已调整，但浏览器未允许保存偏好。');
-            if (audio.current) audio.current.volume = value / 100;
           }}
         />
       </label>
+      <p className="audio-recommendation">
+        此空间适合「{tracks.find((track) => track.id === recommended)?.name}」 · 自由选择{' '}
+        <a href="/audio/SOURCES.md" target="_blank" rel="noreferrer">
+          声音来源与授权 ↗
+        </a>
+      </p>
       {error ? (
         <p className="audio-error" role="status">
           {error}
         </p>
       ) : null}
-    </div>
+    </section>
   );
 }

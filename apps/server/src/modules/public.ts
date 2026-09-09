@@ -1,5 +1,5 @@
 import type { Prisma } from '@prisma/client';
-import type { PublicRoom } from '@focusspace/shared';
+import type { PublicRoom, RoomTheme } from '@focusspace/shared';
 import { db } from '../db.js';
 import { AppError } from '../errors.js';
 export function pagination(query: Record<string, unknown>, size = 12) {
@@ -30,6 +30,7 @@ export async function publicRooms(query: Record<string, unknown>) {
         id: true,
         name: true,
         capacity: true,
+        theme: true,
         session: {
           select: { phase: true, focusSeconds: true, breakSeconds: true, phaseEndAt: true },
         },
@@ -41,6 +42,7 @@ export async function publicRooms(query: Record<string, unknown>) {
     id: r.id,
     name: r.name,
     capacity: r.capacity,
+    theme: r.theme as RoomTheme,
     members: r._count.members,
     phase: r.session.phase,
     focusSeconds: r.session.focusSeconds,
