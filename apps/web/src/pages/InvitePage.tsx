@@ -11,6 +11,7 @@ export function InvitePage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   async function join() {
+    if (busy) return;
     setBusy(true);
     setError('');
     try {
@@ -25,11 +26,14 @@ export function InvitePage() {
     }
   }
   return (
-    <section className="empty-state">
+    <section className="empty-state invite-page">
       <span className="eyebrow">A SEAT IS WAITING</span>
       <h1>朋友邀请你一起专注</h1>
-      <p>房间码：{code}</p>
-      <p>加入后立即同步当前阶段，仅计算实际参与时间。可以在大厅或进行中添加任务。</p>
+      <p className="invite-ticket">
+        <span>你的入座房间码</span>
+        <strong>{code}</strong>
+      </p>
+      <p>入座后跟随大家的学习节奏，写下目标，就可以一起开始。</p>
       {error ? <Notice>{error}</Notice> : null}
       <button className="button primary" disabled={busy} onClick={() => void join()}>
         {busy ? '正在加入…' : '加入邀请房间'}

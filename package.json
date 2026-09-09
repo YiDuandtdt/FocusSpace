@@ -31,6 +31,7 @@
     "test:feedback": "tsx scripts/verify-feedback.ts",
     "admin:init": "node --env-file=.env scripts/init-admin.mjs",
     "test:admin": "tsx scripts/verify-admin.ts",
+    "test:ui": "tsx scripts/verify-ui.ts",
     "start:local": "node --env-file=.env scripts/start-local.mjs"
   },
   "devDependencies": {

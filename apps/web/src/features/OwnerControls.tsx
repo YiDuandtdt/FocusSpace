@@ -29,8 +29,8 @@ export function OwnerControls({
     if (await perform('room:transfer', { targetId, leave })) setTargetId('');
   };
   return (
-    <section className="panel owner-controls">
-      <h2>房主管理</h2>
+    <details className="panel owner-controls">
+      <summary>房主管理</summary>
       <p>
         当前房间：{data.room.visibility === 'PUBLIC' ? '公开' : '私有'}
         {data.room.delisted ? ' · 已被管理员下架' : ''}
@@ -80,9 +80,8 @@ export function OwnerControls({
         </button>
       </div>
       <p className="muted">
-        断线宽限期结束后，在线且非暂离成员按本次入座时间最早者接任，同时间按座位及用户 ID
-        排序。无人符合条件才结束全房。
+        断线宽限期结束后，由最早入座的在线、非暂离成员接任；无人可接任时结束共学。
       </p>
-    </section>
+    </details>
   );
 }

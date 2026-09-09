@@ -1,8 +1,34 @@
-import { useState, type FormEvent, type ReactNode } from 'react';
-import { Link } from 'react-router-dom';
+import {
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ComponentPropsWithoutRef,
+  type FormEvent,
+  type ReactNode,
+} from 'react';
+import { Link, NavLink } from 'react-router-dom';
 import { AVATARS, type User } from '@focusspace/shared';
 import { useAuth } from './auth';
 import { api, errorMessage } from './api';
+
+export function Modal({ children, ...props }: ComponentPropsWithoutRef<'dialog'>) {
+  const ref = useRef<HTMLDialogElement>(null);
+  useLayoutEffect(() => {
+    const dialog = ref.current!;
+    const trigger = document.activeElement;
+    dialog.showModal();
+    return () => {
+      dialog.close();
+      if (trigger instanceof HTMLElement && trigger.isConnected)
+        trigger.focus({ preventScroll: true });
+    };
+  }, []);
+  return (
+    <dialog {...props} ref={ref}>
+      {children}
+    </dialog>
+  );
+}
 
 export function Avatar({
   nickname,
@@ -51,9 +77,15 @@ export function AvatarPicker({
     </fieldset>
   );
 }
-export function Notice({ children }: { children: ReactNode }) {
+export function Notice({
+  children,
+  tone = 'error',
+}: {
+  children: ReactNode;
+  tone?: 'error' | 'success' | 'info';
+}) {
   return (
-    <p className="notice" role="alert">
+    <p className={`notice notice-${tone}`} role={tone === 'error' ? 'alert' : 'status'}>
       {children}
     </p>
   );
@@ -62,8 +94,13 @@ export function Shell({ children }: { children: ReactNode }) {
   const { user, logout, setUser } = useAuth();
   const [editing, setEditing] = useState(false);
   const [error, setError] = useState('');
+  const [loggingOut, setLoggingOut] = useState(false);
+  const [confirmLogout, setConfirmLogout] = useState(false);
   return (
     <div className="app-shell">
+      <a className="skip-link" href="#main-content">
+        跳到主要内容
+      </a>
       <header className="header">
         <Link to="/" className="brand" aria-label="FocusSpace 首页">
           <span className="brand-mark">
@@ -71,29 +108,33 @@ export function Shell({ children }: { children: ReactNode }) {
           </span>
           FocusSpace<span className="brand-note">共同在场</span>
         </Link>
-        <div className="header-actions">
+        <nav className="header-actions" aria-label="主导航">
           {user ? (
             <>
+              <NavLink to="/" end className="text-button nav-link">
+                我的空间
+              </NavLink>
+              <NavLink to="/history" className="text-button nav-link">
+                学习历史
+              </NavLink>
               {user.role === 'ADMIN' ? (
                 <Link to="/admin" className="text-button">
                   管理后台
                 </Link>
               ) : null}
-              <button className="profile-button" onClick={() => setEditing(true)}>
+              <button
+                className="profile-button"
+                aria-label={`编辑个人资料：${user.nickname}`}
+                onClick={() => setEditing(true)}
+              >
                 <Avatar small nickname={user.nickname} avatarId={user.avatarId} />
                 <span>{user.nickname}</span>
               </button>
               <button
                 className="text-button"
                 onClick={() => {
-                  if (
-                    window.confirm(
-                      '退出登录会断开此登录会话的房间连接并清除本浏览器草稿。如果你是房主，且没有其他有效连接在宽限期内恢复，将由在线且非暂离成员接任，无合适成员才结束房间；超时会释放自己的座位。确认退出？',
-                    )
-                  ) {
-                    setEditing(false);
-                    void logout().catch((e) => setError(errorMessage(e)));
-                  }
+                  setError('');
+                  setConfirmLogout(true);
                 }}
               >
                 退出登录
@@ -102,10 +143,12 @@ export function Shell({ children }: { children: ReactNode }) {
           ) : (
             <span className="header-tag">各自学习，一起专注</span>
           )}
-        </div>
+        </nav>
       </header>
       {error ? <Notice>{error}</Notice> : null}
-      <main key={user?.id ?? 'anonymous'}>{children}</main>
+      <main id="main-content" tabIndex={-1} key={user?.id ?? 'anonymous'}>
+        {children}
+      </main>
       <footer className="footer">
         <span>FocusSpace</span>
         <span>Study alone, together.</span>
@@ -113,6 +156,51 @@ export function Shell({ children }: { children: ReactNode }) {
       </footer>
       {editing && user ? (
         <Profile user={user} onClose={() => setEditing(false)} onSave={setUser} />
+      ) : null}
+      {confirmLogout ? (
+        <Modal
+          className="profile-dialog"
+          aria-labelledby="logout-title"
+          onCancel={(event) => {
+            if (loggingOut) event.preventDefault();
+            else setConfirmLogout(false);
+          }}
+        >
+          <h2 id="logout-title">退出登录？</h2>
+          <p>退出后会断开共学连接，并清除本浏览器中的任务与聊天草稿。</p>
+          <p className="muted">
+            如果你是房主，断线宽限期结束后会由在线且非暂离的成员接任；无人可接任时结束共学。
+          </p>
+          {error ? <Notice>{error}</Notice> : null}
+          <div className="dialog-actions">
+            <button
+              className="button secondary"
+              disabled={loggingOut}
+              onClick={() => setConfirmLogout(false)}
+            >
+              继续留在这里
+            </button>
+            <button
+              className="button danger"
+              disabled={loggingOut}
+              onClick={async () => {
+                setLoggingOut(true);
+                setError('');
+                try {
+                  await logout();
+                  setEditing(false);
+                  setConfirmLogout(false);
+                } catch (e) {
+                  setError(errorMessage(e));
+                } finally {
+                  setLoggingOut(false);
+                }
+              }}
+            >
+              {loggingOut ? '正在退出…' : '确认退出登录'}
+            </button>
+          </div>
+        </Modal>
       ) : null}
     </div>
   );
@@ -132,6 +220,11 @@ function Profile({
   const [busy, setBusy] = useState(false);
   async function save(event: FormEvent) {
     event.preventDefault();
+    if (busy) return;
+    if (!nickname.trim()) {
+      setError('请输入昵称，不能只包含空格。');
+      return;
+    }
     setBusy(true);
     setError('');
     try {
@@ -148,18 +241,24 @@ function Profile({
     }
   }
   return (
-    <dialog
+    <Modal
       className="profile-dialog"
-      ref={(node) => {
-        if (node && !node.open) node.showModal();
+      onCancel={(event) => {
+        if (busy) event.preventDefault();
+        else onClose();
       }}
-      onCancel={onClose}
       aria-labelledby="profile-title"
     >
       <form onSubmit={save}>
         <div className="panel-heading">
           <h2 id="profile-title">你的共学形象</h2>
-          <button type="button" className="text-button" onClick={onClose} aria-label="关闭">
+          <button
+            type="button"
+            className="text-button"
+            disabled={busy}
+            onClick={onClose}
+            aria-label="关闭"
+          >
             ✕
           </button>
         </div>
@@ -167,10 +266,12 @@ function Profile({
           昵称
           <input
             value={nickname}
+            name="nickname"
+            autoComplete="nickname"
+            disabled={busy}
             onChange={(e) => setNickname(e.target.value)}
             maxLength={20}
             required
-            autoFocus
           />
         </label>
         <AvatarPicker value={avatarId} onChange={setAvatarId} />
@@ -179,7 +280,7 @@ function Profile({
           {busy ? '保存中…' : '保存修改'}
         </button>
       </form>
-    </dialog>
+    </Modal>
   );
 }
 export function RhythmFields({

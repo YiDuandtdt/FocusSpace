@@ -85,7 +85,7 @@ export function HomePage() {
         </div>
       ) : null}
       {error ? <Notice>{error}</Notice> : null}
-      <section className="entry-grid">
+      <section className="entry-grid" id="room-entry" aria-label="创建或加入房间">
         <form className="panel create-panel" onSubmit={(event) => void enter(event, 'create')}>
           <div className="panel-heading">
             <div>
@@ -101,6 +101,10 @@ export function HomePage() {
             房间名称
             <input
               placeholder="例如：今晚一起读书"
+              name="roomName"
+              autoComplete="off"
+              pattern=".*\S.*"
+              title="请输入房间名称，不能只包含空格"
               value={name}
               onChange={(e) => setName(e.target.value)}
               maxLength={40}
@@ -118,31 +122,35 @@ export function HomePage() {
             </select>
           </label>
           <RhythmFields focus={focus} rest={rest} setFocus={setFocus} setRest={setRest} />
-          <button
-            type="button"
-            className="text-button"
-            onClick={() => {
-              if (
-                focus >= 1 &&
-                focus <= 180 &&
-                rest >= 1 &&
-                rest <= 60 &&
-                Number.isInteger(focus) &&
-                Number.isInteger(rest)
-              )
-                setSaved(
-                  savePreferences(user!.id, { focusSeconds: focus * 60, breakSeconds: rest * 60 })
-                    ? '默认节奏已保存，仅用于新建房间。'
-                    : '浏览器未允许保存偏好。',
-                );
-              else setSaved('请输入范围内的整数分钟。');
-            }}
-          >
-            保存为默认节奏
-          </button>
-          <p className="muted" role="status">
-            {saved || '偏好保存在当前浏览器、按账号隔离；加入房间沿用房主节奏。'}
-          </p>
+          <details className="preference-details">
+            <summary>保存常用节奏</summary>
+            <button
+              type="button"
+              className="text-button"
+              onClick={() => {
+                if (
+                  focus >= 1 &&
+                  focus <= 180 &&
+                  rest >= 1 &&
+                  rest <= 60 &&
+                  Number.isInteger(focus) &&
+                  Number.isInteger(rest)
+                )
+                  setSaved(
+                    savePreferences(user!.id, { focusSeconds: focus * 60, breakSeconds: rest * 60 })
+                      ? '默认节奏已保存，仅用于新建房间。'
+                      : '浏览器未允许保存偏好。',
+                  );
+                else setSaved('请输入范围内的整数分钟。');
+              }}
+            >
+              保存为默认节奏
+            </button>
+            <p className="muted" role="status">
+              {saved || '下次创建时使用此节奏；加入房间时跟随房主。'}
+            </p>
+          </details>
+          {currentRoomId ? <p className="muted">已有共学进行中，返回当前房间后即可继续。</p> : null}
           <button className="button primary full" disabled={!!busy || !!currentRoomId}>
             {busy === 'create' ? '正在创建…' : '创建房间'}
             <span aria-hidden="true">↗</span>
@@ -157,6 +165,9 @@ export function HomePage() {
               房间码
               <input
                 className="code-input"
+                name="roomCode"
+                pattern="[A-HJ-NP-Z2-9]{6}"
+                title="请输入 6 位房间码，不含 I、O、0、1"
                 placeholder="ABC234"
                 value={code}
                 onChange={(e) => setCode(e.target.value.toUpperCase().replace(/\s/g, ''))}
@@ -179,9 +190,7 @@ export function HomePage() {
             </span>
             <div>
               <h3>小房间，刚刚好的陪伴</h3>
-              <p>
-                私有房间通过房间码加入，公开房间也可从首页加入。成员到来、准备或暂时离开，都会同步给房间里的每个人。
-              </p>
+              <p>专注时各自推进，休息时聊聊进展。最多 8 个座位，共享同一个学习节奏。</p>
             </div>
           </aside>
         </div>

@@ -370,9 +370,13 @@ try {
     .then(async (n) => {
       if (n) await pageA.getByRole('button', { name: '50 / 10', exact: false }).click();
     });
+  await pageA.locator('.preference-details summary').click();
   await pageA.getByRole('button', { name: '保存为默认节奏' }).click();
   await pageA.reload();
-  await pageA.getByLabel('房间名称', { exact: true }).fill('浏览器反馈验证');
+  await pageA
+    .locator('.create-panel')
+    .getByLabel('房间名称', { exact: true })
+    .fill('浏览器反馈验证');
   await pageA.getByRole('button', { name: '创建房间', exact: true }).click();
   await expect(pageA.getByRole('button', { name: '开始共学' })).toBeDisabled();
   await expect(pageA.getByText('请所有成员（含房主）先准备')).toBeVisible();
@@ -472,8 +476,8 @@ try {
     timeout: 15000,
   });
   assert.equal(await database.chatMessage.count({ where: { content: 'chat_draft' } }), 0);
-  pageB.once('dialog', (d) => d.accept());
   await pageB.getByRole('button', { name: '退出登录', exact: true }).click();
+  await pageB.getByRole('button', { name: '确认退出登录', exact: true }).click();
   await expect(pageB.getByRole('button', { name: '登录 FocusSpace' })).toBeVisible();
   assert.equal(
     await pageB.evaluate(

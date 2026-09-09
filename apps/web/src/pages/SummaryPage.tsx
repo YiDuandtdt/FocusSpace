@@ -26,13 +26,17 @@ export function SummaryPage() {
     };
   }, [sessionId, attempt]);
   return (
-    <div className="room-page">
-      <Link className="text-button" to="/">
-        ← 我的空间
+    <div className="summary-page">
+      <Link className="text-button" to="/history">
+        ← 学习历史
       </Link>
       {data ? (
         <>
-          <h1>{data.roomName}</h1>
+          <div className="page-heading">
+            <span className="eyebrow">TIME WELL SPENT</span>
+            <h1>{data.roomName}</h1>
+            <p className="muted">每一段认真投入，都值得被记住。</p>
+          </div>
           <SummaryPanel summary={data} />
         </>
       ) : error ? (
@@ -43,7 +47,7 @@ export function SummaryPage() {
           </button>
         </Notice>
       ) : (
-        <p>正在读取已保存结果…</p>
+        <p role="status">正在读取已保存结果…</p>
       )}
     </div>
   );

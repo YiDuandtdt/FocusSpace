@@ -141,7 +141,14 @@ export function createStudyRoomScene(host: HTMLDivElement, onFailure: () => void
     resume();
   }
   try {
-    renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'low-power' });
+    renderer = new THREE.WebGLRenderer({
+      canvas,
+      antialias: true,
+      powerPreference: 'low-power',
+      // Reduced motion renders on demand. Retain the last frame when Chromium
+      // recomposites the canvas after scrolling or changing viewport size.
+      preserveDrawingBuffer: true,
+    });
     renderer.debug.onShaderError = () => {
       queueMicrotask(() => fail());
     };

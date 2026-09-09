@@ -6,6 +6,7 @@ import { createRequestId } from '../requestId';
 import { useAuth } from '../auth';
 import { Notice } from '../components';
 import { themes } from './space/themes';
+import { useListLocation } from '../navigation';
 export const phaseNames = {
   LOBBY: '等待开始',
   FOCUS: '正在专注',
@@ -15,10 +16,12 @@ export const phaseNames = {
 export function PublicRooms() {
   const { currentRoomId, refresh } = useAuth();
   const navigate = useNavigate();
-  const [page, setPage] = useState(1),
-    [q, setQ] = useState(''),
-    [search, setSearch] = useState(''),
-    [phase, setPhase] = useState('');
+  const location = useListLocation('rooms_');
+  const { page } = location;
+  const search = location.get('q');
+  const phase = location.get('phase');
+  const [q, setQ] = useState(search);
+  useEffect(() => setQ(search), [search]);
   const [data, setData] = useState<Page<PublicRoom> | null>(null),
     [error, setError] = useState(''),
     [busy, setBusy] = useState('');
@@ -69,15 +72,12 @@ export function PublicRooms() {
           刷新列表
         </button>
       </div>
-      <p className="muted">
-        选择一个主题，立即同步房间当前阶段。从入座连接后开始个人计时，无需等待下一轮。
-      </p>
+      <p className="muted">找一处喜欢的空间，和正在努力的人一起坐下。</p>
       <form
         className="directory-filters"
         onSubmit={(e) => {
           e.preventDefault();
-          setPage(1);
-          setSearch(q);
+          location.update({ page: 1, q: q.trim() });
           reload();
         }}
       >
@@ -85,9 +85,12 @@ export function PublicRooms() {
           房间名称
           <input
             value={q}
+            type="search"
+            name="roomSearch"
+            autoComplete="off"
             maxLength={80}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="搜索房间名称"
+            placeholder="搜索房间名称…"
           />
         </label>
         <label>
@@ -95,8 +98,7 @@ export function PublicRooms() {
           <select
             value={phase}
             onChange={(e) => {
-              setPage(1);
-              setPhase(e.target.value);
+              location.update({ page: 1, phase: e.target.value });
             }}
           >
             <option value="">全部阶段</option>
@@ -110,7 +112,29 @@ export function PublicRooms() {
       {error ? <Notice>{error}</Notice> : null}
       {!data && !error ? <p role="status">正在读取公开房间…</p> : null}
       {data?.total === 0 ? (
-        <p className="empty-state">还没有符合条件的公开房间。你可以创建第一个。</p>
+        <div className="directory-empty">
+          <h3>{search || phase ? '没有找到匹配的房间' : '第一张桌子，等你来打开'}</h3>
+          <p className="muted">
+            {search || phase
+              ? '试试其他名称，或查看全部共学阶段。'
+              : '创建一个公开房间，让学习搭子找到你。'}
+          </p>
+          {search || phase ? (
+            <button
+              className="text-button"
+              onClick={() => {
+                setQ('');
+                location.update({ page: 1, q: '', phase: '' });
+              }}
+            >
+              清除筛选
+            </button>
+          ) : (
+            <a className="text-button" href="#room-entry">
+              创建共学房间 →
+            </a>
+          )}
+        </div>
       ) : null}
       <div className="public-grid">
         {data?.items.map((r) => (
@@ -149,12 +173,12 @@ export function PublicRooms() {
           </article>
         ))}
       </div>
-      {data ? (
+      {data && data.total > data.pageSize ? (
         <div className="pagination">
           <button
             className="button secondary"
             disabled={page <= 1}
-            onClick={() => setPage((p) => p - 1)}
+            onClick={() => location.update({ page: page - 1 })}
           >
             上一页
           </button>
@@ -164,7 +188,7 @@ export function PublicRooms() {
           <button
             className="button secondary"
             disabled={page * data.pageSize >= data.total}
-            onClick={() => setPage((p) => p + 1)}
+            onClick={() => location.update({ page: page + 1 })}
           >
             下一页
           </button>

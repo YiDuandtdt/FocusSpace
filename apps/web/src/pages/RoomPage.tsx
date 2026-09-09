@@ -1,10 +1,10 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import type { RoomCommand, RoomSnapshot } from '@focusspace/shared';
 import { useAuth } from '../auth';
 import { errorMessage } from '../api';
 import { copyText } from '../clipboard';
-import { Avatar, Notice, RhythmFields } from '../components';
+import { Avatar, Modal, Notice, RhythmFields } from '../components';
 import { useRoom } from '../state/useRoom';
 import { PhaseTimer, TaskPanel, ChatPanel, SummaryPanel } from '../features/SessionPanels';
 import { StudySpace } from '../features/space/StudySpace';
@@ -27,13 +27,23 @@ export function RoomPage() {
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState('');
   const [copied, setCopied] = useState(false);
+  const [success, setSuccess] = useState('');
   const [confirmLeave, setConfirmLeave] = useState(false);
   const immersion = useImmersion(user!.id, removed || data?.session.phase === 'ENDED');
   const [showChat, setShowChat] = useState(false);
+  useEffect(() => {
+    setShowChat(data?.session.phase === 'BREAK');
+  }, [data?.session.phase]);
+  useEffect(() => {
+    if (!copied) return;
+    const timer = window.setTimeout(() => setCopied(false), 2500);
+    return () => window.clearTimeout(timer);
+  }, [copied]);
   async function perform(type: RoomCommand, payload: unknown = {}) {
     if (busy) return false;
     setBusy(true);
     setActionError('');
+    setSuccess('');
     try {
       await command(type, payload);
       if (type === 'session:end') await refresh();
@@ -133,11 +143,12 @@ export function RoomPage() {
           className="invite-code"
           onClick={() => {
             setActionError('');
+            setSuccess('');
             setCopied(false);
             void copyText(data.room.code)
               .then(() => {
                 setCopied(true);
-                setTimeout(() => setCopied(false), 2500);
+                setSuccess('房间码已复制，分享给朋友一起入座。');
               })
               .catch(() => setActionError(`复制未成功，请手动复制房间码：${data.room.code}`));
           }}
@@ -154,7 +165,10 @@ export function RoomPage() {
           className="text-button invitation-link"
           onClick={() =>
             void copyText(window.location.origin + '/join/' + data.room.code)
-              .then(() => setActionError('邀请链接已复制'))
+              .then(() => {
+                setActionError('');
+                setSuccess('邀请链接已复制');
+              })
               .catch(() =>
                 setActionError(
                   '请复制邀请链接：' + window.location.origin + '/join/' + data.room.code,
@@ -166,6 +180,7 @@ export function RoomPage() {
         </button>
       ) : null}
       {actionError ? <Notice>{actionError}</Notice> : null}
+      {success ? <Notice tone="success">{success}</Notice> : null}
       {data.summary ? <SummaryPanel summary={data.summary} /> : null}
       {!ended ? (
         <div className="immersion-toolbar" aria-label="空间体验控制">
@@ -194,9 +209,14 @@ export function RoomPage() {
             <button
               className="text-button"
               aria-expanded={showChat}
+              aria-controls="room-chat"
               onClick={() => setShowChat(!showChat)}
             >
-              {showChat ? '收起聊天' : '打开休息聊天'}
+              {showChat
+                ? '收起聊天'
+                : data.session.phase === 'BREAK'
+                  ? '打开休息聊天'
+                  : '聊天 · 休息时开放'}
             </button>
           ) : null}
           <button
@@ -306,53 +326,57 @@ export function RoomPage() {
             {!ended ? (
               <AmbientAudio key={`audio-${roomId}`} recommended={themes[data.room.theme].sound} />
             ) : null}
-            <div className="lobby-controls">
-              <div>
-                <strong>
-                  {me?.afk
-                    ? '稍作离开，也没关系'
-                    : lobby
-                      ? me?.ready
-                        ? '你已准备好'
-                        : '安顿好，就准备一下'
-                      : phaseLabel}
-                </strong>
-                <p>
-                  {lobby
-                    ? '所有成员在线、非暂离且准备后，房主可以开始。'
-                    : me?.lateJoin
-                      ? '你是中途加入，已立即同步当前阶段，从入座连接后开始个人计时。'
-                      : '暂离时暂停个人计时，房间节奏继续。'}
-                </p>
-              </div>
-              <div>
-                <button
-                  className="button secondary"
-                  disabled={!writable}
-                  onClick={() => void perform('member:afk', { afk: !me?.afk })}
-                >
-                  {me?.afk ? '我回来了' : '暂时离开'}
-                </button>
-                {lobby ? (
+            {!ended ? (
+              <div className="lobby-controls">
+                <div>
+                  <strong>
+                    {me?.afk
+                      ? '稍作离开，也没关系'
+                      : lobby
+                        ? me?.ready
+                          ? '你已准备好'
+                          : '安顿好，就准备一下'
+                        : phaseLabel}
+                  </strong>
+                  <p>
+                    {lobby
+                      ? '所有成员在线、非暂离且准备后，房主可以开始。'
+                      : me?.lateJoin
+                        ? '你是中途加入，已立即同步当前阶段，从入座连接后开始个人计时。'
+                        : '暂离时暂停个人计时，房间节奏继续。'}
+                  </p>
+                </div>
+                <div>
                   <button
-                    className="button primary"
-                    disabled={!writable || me?.afk}
-                    onClick={() => void perform('member:ready', { ready: !me?.ready })}
+                    className="button secondary"
+                    aria-pressed={!!me?.afk}
+                    disabled={!writable}
+                    onClick={() => void perform('member:afk', { afk: !me?.afk })}
                   >
-                    {me?.ready ? '取消准备' : '我准备好了'} <span aria-hidden="true">✓</span>
+                    {me?.afk ? '我回来了' : '暂时离开'}
                   </button>
-                ) : null}
-                {lobby && data.myPermissions.isOwner ? (
-                  <button
-                    className="button primary"
-                    disabled={!writable || !data.myPermissions.canStart}
-                    onClick={() => void perform('session:start')}
-                  >
-                    开始共学
-                  </button>
-                ) : null}
+                  {lobby ? (
+                    <button
+                      className="button primary"
+                      aria-pressed={!!me?.ready}
+                      disabled={!writable || me?.afk}
+                      onClick={() => void perform('member:ready', { ready: !me?.ready })}
+                    >
+                      {me?.ready ? '取消准备' : '我准备好了'} <span aria-hidden="true">✓</span>
+                    </button>
+                  ) : null}
+                  {lobby && data.myPermissions.isOwner ? (
+                    <button
+                      className="button primary"
+                      disabled={!writable || !data.myPermissions.canStart}
+                      onClick={() => void perform('session:start')}
+                    >
+                      开始共学
+                    </button>
+                  ) : null}
+                </div>
               </div>
-            </div>
+            ) : null}
           </section>
         </div>
         <aside className="room-sidebar">
@@ -389,8 +413,8 @@ export function RoomPage() {
                   '%'
                 : '未设置任务'}
               <br />
-              共同专注 {data.feedback.roomFocusSeconds} 秒 · 至少两人同时
-              Focus，包含已离开成员的实际参与
+              共同专注 {Math.floor(data.feedback.roomFocusSeconds / 60)} 分{' '}
+              {data.feedback.roomFocusSeconds % 60} 秒 · 至少两人同时专注
             </p>
             <ul className="member-list">
               {data.members.map((member) => (
@@ -449,11 +473,8 @@ export function RoomPage() {
         </aside>
       </div>
       {confirmLeave ? (
-        <dialog
+        <Modal
           className="profile-dialog"
-          ref={(node) => {
-            if (node && !node.open) node.showModal();
-          }}
           onCancel={() => setConfirmLeave(false)}
           aria-labelledby="leave-title"
         >
@@ -470,7 +491,7 @@ export function RoomPage() {
               继续留在这里
             </button>
             <button
-              className="button primary"
+              className="button danger"
               disabled={!writable}
               onClick={() => {
                 setConfirmLeave(false);
@@ -480,7 +501,7 @@ export function RoomPage() {
               {data.myPermissions.isOwner ? '确认结束' : '确认离开'}
             </button>
           </div>
-        </dialog>
+        </Modal>
       ) : null}
     </div>
   );

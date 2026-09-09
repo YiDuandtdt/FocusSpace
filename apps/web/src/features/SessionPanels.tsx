@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import type {
   ChatMessage,
   RoomCommand,
@@ -9,7 +9,7 @@ import type {
 } from '@focusspace/shared';
 import { useAuth } from '../auth';
 import { useDraft } from '../preferences';
-import { Notice } from '../components';
+import { Modal, Notice } from '../components';
 import { errorMessage } from '../api';
 
 export function PhaseTimer({
@@ -48,7 +48,7 @@ export function PhaseTimer({
         {String(Math.floor(remaining / 60)).padStart(2, '0')}:
         {String(remaining % 60).padStart(2, '0')}
       </strong>
-      <p>
+      <p role="status">
         {remaining === 0
           ? '正在确认下一阶段…'
           : session.phase === 'BREAK' && remaining <= 10
@@ -85,6 +85,7 @@ export function TaskPanel({
   const [busy, setBusy] = useState(false);
   const done = tasks.filter((t) => t.completed).length;
   async function run(type: RoomCommand, payload: unknown) {
+    if (busy || disabled || ended) return false;
     setBusy(true);
     setError('');
     try {
@@ -108,7 +109,7 @@ export function TaskPanel({
         <span>{tasks.length ? `${done} / ${tasks.length}` : '未设置任务'}</span>
       </div>
       <p className="muted">
-        默认标题仅自己可见，可主动公开给成员。大厅及进行中都能添加任务。
+        先写下一个小目标。任务标题默认仅自己可见。
         {ended ? '本次任务已冻结。' : ''}
       </p>
       <details className="muted task-rules">
@@ -179,7 +180,7 @@ function TaskRow({
   }
   const changed = editing && version !== task.version;
   return (
-    <li className="task-row">
+    <li className={`task-row ${editing ? 'task-row-editing' : ''}`}>
       <input
         type="checkbox"
         aria-label={`完成任务：${task.title}`}
@@ -220,7 +221,7 @@ function TaskRow({
       ) : (
         <>
           <button
-            className="text-button"
+            className="text-button task-visibility"
             disabled={disabled}
             aria-label={
               task.visibility === 'PUBLIC' ? '设为私有：' + task.title : '公开任务：' + task.title
@@ -235,33 +236,32 @@ function TaskRow({
           >
             {task.visibility === 'PUBLIC' ? '已公开' : '私有'}
           </button>
-          <span className={task.completed ? 'task-done' : ''}>{task.title}</span>
-          <button
-            className="text-button"
-            aria-label={`编辑任务：${task.title}`}
-            disabled={disabled}
-            onClick={() => {
-              setSaved({ title: task.title, version: task.version, editing: true });
-            }}
-          >
-            编辑
-          </button>
-          <button
-            className="text-button"
-            aria-label={`删除任务：${task.title}`}
-            disabled={disabled}
-            onClick={() => setDeleting(true)}
-          >
-            删除
-          </button>
+          <span className={`task-title ${task.completed ? 'task-done' : ''}`}>{task.title}</span>
+          <div className="task-actions">
+            <button
+              className="text-button"
+              aria-label={`编辑任务：${task.title}`}
+              disabled={disabled}
+              onClick={() => {
+                setSaved({ title: task.title, version: task.version, editing: true });
+              }}
+            >
+              编辑
+            </button>
+            <button
+              className="text-button"
+              aria-label={`删除任务：${task.title}`}
+              disabled={disabled}
+              onClick={() => setDeleting(true)}
+            >
+              删除
+            </button>
+          </div>
         </>
       )}
       {deleting ? (
-        <dialog
+        <Modal
           className="profile-dialog"
-          ref={(node) => {
-            if (node && !node.open) node.showModal();
-          }}
           onCancel={() => setDeleting(false)}
           aria-label="确认删除任务"
         >
@@ -272,7 +272,7 @@ function TaskRow({
               保留任务
             </button>
             <button
-              className="button primary"
+              className="button danger"
               disabled={disabled}
               onClick={async () => {
                 if (await run('task:delete', { taskId: task.id, version: task.version }))
@@ -282,7 +282,7 @@ function TaskRow({
               确认删除
             </button>
           </div>
-        </dialog>
+        </Modal>
       ) : null}
     </li>
   );
@@ -327,6 +327,7 @@ export function ChatPanel({
   }, [messages, isBreak]);
   async function send(event: FormEvent) {
     event.preventDefault();
+    if (busy || cooldown || disabled || !data.myPermissions.canChat || !draft.trim()) return;
     setBusy(true);
     setError('');
     try {
@@ -349,11 +350,9 @@ export function ChatPanel({
       {isBreak ? (
         <>
           <p className="muted">
-            本轮有效专注 {data.feedback.roundFocusSeconds} 秒 · 本轮首次完成且仍完成的任务{' '}
-            {data.feedback.roundTasksDone ?? '旧数据不可还原'} 个。
-            <br />
-            整场累计有效专注 {data.feedback.focusSeconds} 秒 · 当前完成{' '}
-            {data.myTasks.filter((t) => t.completed).length}/{data.myTasks.length}。
+            本轮专注 {Math.floor(data.feedback.roundFocusSeconds / 60)} 分{' '}
+            {data.feedback.roundFocusSeconds % 60} 秒 · 推进了 {data.feedback.roundTasksDone ?? '—'}{' '}
+            个任务。
           </p>
           <div
             ref={list}
@@ -369,9 +368,7 @@ export function ChatPanel({
             aria-label="聊天室消息列表"
             aria-live="polite"
           >
-            {!messages.length ? (
-              <p className="muted">最近 24 小时暂无消息。加入、刷新和重连恢复最近 50 条。</p>
-            ) : null}
+            {!messages.length ? <p className="muted">休息一下，和搭子分享刚刚的进展吧。</p> : null}
             {messages.map((message) => (
               <article key={message.id}>
                 <strong>{message.nickname}</strong>
@@ -400,6 +397,7 @@ export function ChatPanel({
         <label>
           休息消息
           <textarea
+            name="message"
             aria-label="休息消息"
             rows={2}
             value={draft}
@@ -426,6 +424,7 @@ export function ChatPanel({
 }
 
 export function SummaryPanel({ summary }: { summary: SessionSummary }) {
+  const { pathname } = useLocation();
   const r = summary.record;
   const reasons: Record<string, string> = {
     ADMIN_ENDED: '管理员结束共学',
@@ -483,8 +482,11 @@ export function SummaryPanel({ summary }: { summary: SessionSummary }) {
         <Link className="button primary" to="/">
           回到首页 ↗
         </Link>
-        <Link className="text-button" to={`/sessions/${summary.sessionId}/summary`}>
-          打开已保存结果
+        <Link
+          className="text-button"
+          to={pathname.endsWith('/summary') ? '/history' : `/sessions/${summary.sessionId}/summary`}
+        >
+          {pathname.endsWith('/summary') ? '查看学习历史' : '打开已保存结果'}
         </Link>
       </div>
     </section>

@@ -13,8 +13,9 @@ import type {
 import { api, errorMessage, RequestError } from '../api';
 import { createRequestId } from '../requestId';
 import { useAuth } from '../auth';
-import { Notice } from '../components';
+import { Modal, Notice } from '../components';
 import { phaseNames } from '../features/PublicRooms';
+import { useListLocation } from '../navigation';
 type Tab = 'overview' | 'users' | 'rooms' | 'messages' | 'audits';
 const tabs: [Tab, string][] = [
   ['overview', '管理概览'],
@@ -33,11 +34,13 @@ const actionNames = {
 const time = (s: string | null) => (s ? new Date(s).toLocaleString('zh-CN') : '—');
 export function AdminPage() {
   const { user } = useAuth();
-  const [tab, setTab] = useState<Tab>('overview'),
-    [page, setPage] = useState(1),
-    [q, setQ] = useState(''),
-    [search, setSearch] = useState(''),
-    [phase, setPhase] = useState('');
+  const location = useListLocation();
+  const { page } = location;
+  const tab: Tab = tabs.find(([id]) => id === location.get('tab'))?.[0] ?? 'overview';
+  const search = location.get('q');
+  const phase = location.get('phase');
+  const [q, setQ] = useState(search);
+  useEffect(() => setQ(search), [search, tab]);
   const [data, setData] = useState<
     AdminOverview | Page<AdminUser | AdminRoom | AdminMessage | Audit> | null
   >(null);
@@ -145,21 +148,18 @@ export function AdminPage() {
       </p>
       <nav className="admin-tabs" aria-label="管理栏目">
         {tabs.map(([id, label]) => (
-          <button
+          <Link
             key={id}
             aria-current={tab === id ? 'page' : undefined}
             className={'button ' + (tab === id ? 'primary' : 'secondary')}
-            disabled={busy}
-            onClick={() => {
-              setTab(id);
-              setPage(1);
-              setQ('');
-              setSearch('');
-              setPhase('');
+            to={id === 'overview' ? '/admin' : `/admin?tab=${id}`}
+            aria-disabled={busy || undefined}
+            onClick={(event) => {
+              if (busy) event.preventDefault();
             }}
           >
             {label}
-          </button>
+          </Link>
         ))}
       </nav>
       <div className="directory-filters">
@@ -168,8 +168,7 @@ export function AdminPage() {
             className="directory-filters"
             onSubmit={(e) => {
               e.preventDefault();
-              setPage(1);
-              setSearch(q);
+              location.update({ page: 1, q: q.trim() });
               setVersion((v) => v + 1);
             }}
           >
@@ -181,7 +180,14 @@ export function AdminPage() {
                   : tab === 'messages'
                     ? '按房间 ID 筛选'
                     : '按操作者或对象 ID 筛选'}
-              <input value={q} maxLength={80} onChange={(e) => setQ(e.target.value)} />
+              <input
+                type="search"
+                name="adminSearch"
+                autoComplete="off"
+                value={q}
+                maxLength={80}
+                onChange={(e) => setQ(e.target.value)}
+              />
             </label>
             {tab === 'rooms' ? (
               <label>
@@ -189,8 +195,7 @@ export function AdminPage() {
                 <select
                   value={phase}
                   onChange={(e) => {
-                    setPage(1);
-                    setPhase(e.target.value);
+                    location.update({ page: 1, phase: e.target.value });
                   }}
                 >
                   <option value="">全部</option>
@@ -210,12 +215,12 @@ export function AdminPage() {
         </button>
       </div>
       {notice ? (
-        <p role="status" className="notice">
+        <p role="status" className="notice notice-success">
           {notice}
         </p>
       ) : null}
       {error && !pending ? <Notice>{error}</Notice> : null}
-      {!data && !error ? <p role="status">正在读取真实数据…</p> : null}
+      {!data && !error ? <p role="status">正在读取管理数据…</p> : null}
       {overview ? (
         <>
           <div className="admin-metrics">
@@ -245,7 +250,12 @@ export function AdminPage() {
       ) : null}
       {list?.items.length === 0 ? <p className="empty-state">暂无符合条件的数据。</p> : null}
       {list && tab === 'users' ? (
-        <div className="admin-table-wrap">
+        <div
+          className="admin-table-wrap"
+          tabIndex={0}
+          role="region"
+          aria-label="用户管理列表，可横向滚动"
+        >
           <table className="admin-table">
             <thead>
               <tr>
@@ -383,12 +393,12 @@ export function AdminPage() {
           ))}
         </div>
       ) : null}
-      {list ? (
+      {list && list.total > list.pageSize ? (
         <div className="pagination">
           <button
             className="button secondary"
             disabled={page <= 1 || busy}
-            onClick={() => setPage((p) => p - 1)}
+            onClick={() => location.update({ page: page - 1 })}
           >
             上一页
           </button>
@@ -398,18 +408,15 @@ export function AdminPage() {
           <button
             className="button secondary"
             disabled={page * list.pageSize >= list.total || busy}
-            onClick={() => setPage((p) => p + 1)}
+            onClick={() => location.update({ page: page + 1 })}
           >
             下一页
           </button>
         </div>
       ) : null}
       {pending ? (
-        <dialog
+        <Modal
           className="profile-dialog admin-confirm"
-          ref={(node) => {
-            if (node && !node.open) node.showModal();
-          }}
           onCancel={(e) => {
             if (busy) e.preventDefault();
             else setPending(null);
@@ -452,7 +459,7 @@ export function AdminPage() {
               </button>
             </div>
           </form>
-        </dialog>
+        </Modal>
       ) : null}
     </div>
   );

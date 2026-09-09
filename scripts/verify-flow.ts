@@ -380,7 +380,7 @@ try {
   await browserRegister(first, 'browser_owner', '小满');
   await browserRegister(second, 'browser_guest', '知夏');
   await first.screenshot({ path: resolve(directory, 'home-desktop.png'), fullPage: true });
-  await first.getByLabel('房间名称', { exact: true }).fill('晚风读书室');
+  await first.locator('.create-panel').getByLabel('房间名称', { exact: true }).fill('晚风读书室');
   await first.getByRole('button', { name: '创建房间', exact: true }).click();
   await expect(first.getByRole('status').first()).toContainText('实时连接正常');
   const browserRoomUrl = first.url();
@@ -413,6 +413,8 @@ try {
   await first.getByRole('button', { name: '确认结束', exact: true }).click();
   await expect(second.getByText('这次相聚先到这里')).toBeVisible();
   await first.getByRole('button', { name: '退出登录', exact: true }).click();
+  await first.getByRole('button', { name: '确认退出登录', exact: true }).click();
+  await expect(first.getByRole('button', { name: '登录 FocusSpace' })).toBeVisible();
   await first.goto(browserRoomUrl);
   await expect(first.getByRole('button', { name: '登录 FocusSpace' })).toBeVisible();
   assert.deepEqual(browserErrors, []);

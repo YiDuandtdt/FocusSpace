@@ -12,7 +12,7 @@ export function AuthPage({ register = false }: { register?: boolean }) {
   const returnTo = params.get('next');
   const next =
     returnTo &&
-    /^\/(?:history|join\/[A-HJ-NP-Z2-9]{6}|rooms\/[^/?#\\]+|sessions\/[^/?#\\]+\/summary)$/.test(
+    /^\/(?:history|admin(?:\/[a-z]+)?|join\/[A-HJ-NP-Z2-9]{6}|rooms\/[^/?#\\]+|sessions\/[^/?#\\]+\/summary)?(?:\?[^#\\]*)?$/.test(
       returnTo,
     )
       ? returnTo
@@ -23,10 +23,16 @@ export function AuthPage({ register = false }: { register?: boolean }) {
   const [avatarId, setAvatarId] = useState<User['avatarId']>('lake');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   if (user) return <Navigate to={next} replace />;
   async function submit(event: FormEvent) {
     event.preventDefault();
     if (busy) return;
+    if (register && !nickname.trim()) {
+      setError('请输入昵称，不能只包含空格。');
+      event.currentTarget.querySelector<HTMLInputElement>('[name="nickname"]')?.focus();
+      return;
+    }
     setError('');
     setBusy(true);
     try {
@@ -95,6 +101,9 @@ export function AuthPage({ register = false }: { register?: boolean }) {
             账号
             <input
               autoComplete="username"
+              name="username"
+              autoCapitalize="none"
+              spellCheck={false}
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               placeholder="3–24 位字母、数字或下划线"
@@ -109,6 +118,7 @@ export function AuthPage({ register = false }: { register?: boolean }) {
               昵称
               <input
                 autoComplete="nickname"
+                name="nickname"
                 value={nickname}
                 onChange={(e) => setNickname(e.target.value)}
                 placeholder="大家怎么称呼你？"
@@ -117,10 +127,12 @@ export function AuthPage({ register = false }: { register?: boolean }) {
               />
             </label>
           ) : null}
-          <label>
-            密码
+          <label htmlFor="auth-password">密码</label>
+          <div className="password-field">
             <input
-              type="password"
+              id="auth-password"
+              name="password"
+              type={showPassword ? 'text' : 'password'}
               autoComplete={register ? 'new-password' : 'current-password'}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
@@ -129,7 +141,16 @@ export function AuthPage({ register = false }: { register?: boolean }) {
               maxLength={72}
               required
             />
-          </label>
+            <button
+              type="button"
+              className="text-button"
+              aria-controls="auth-password"
+              aria-pressed={showPassword}
+              onClick={() => setShowPassword((value) => !value)}
+            >
+              {showPassword ? '隐藏密码' : '显示密码'}
+            </button>
+          </div>
           {register ? <AvatarPicker value={avatarId} onChange={setAvatarId} /> : null}
           {error ? <Notice>{error}</Notice> : null}
           <button className="button primary full" disabled={busy}>

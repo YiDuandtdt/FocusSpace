@@ -273,6 +273,7 @@ try {
       'focusSeconds',
       'breakSeconds',
       'nextStartAt',
+      'theme',
     ].sort(),
   );
   assert.equal((await req('/rooms/' + room.roomId + '/snapshot', admin)).status, 404);
@@ -564,10 +565,11 @@ try {
   await ap.screenshot({ path: resolve(directory, 'admin-overview.png'), fullPage: true });
   await mp.goto(base);
   await expect(mp.getByRole('heading', { name: '公开共学房间' })).toBeVisible();
-  await mp.getByLabel('房间名称', { exact: true }).fill('浏览器公开共学');
+  await mp.locator('.create-panel').getByLabel('房间名称', { exact: true }).fill('浏览器公开共学');
   await mp.getByLabel('房间可见性').selectOption('PUBLIC');
   await mp.getByRole('button', { name: '创建房间', exact: true }).click();
-  await expect(mp.getByRole('heading', { name: '房主管理' })).toBeVisible();
+  await expect(mp.locator('.owner-controls summary')).toHaveText('房主管理');
+  await mp.locator('.owner-controls summary').click();
   await expect(mp.getByRole('button', { name: '我准备好了' })).toBeEnabled();
   const browserRoom = await database.room.findFirstOrThrow({ where: { name: '浏览器公开共学' } });
   // Give the browser a real chat window and verify DOM redaction, not only socket data.
@@ -586,7 +588,7 @@ try {
   await mp.getByLabel('休息消息', { exact: true }).fill('BROWSER_REMOVE_789');
   await mp.getByRole('button', { name: '发送消息', exact: true }).click();
   await expect(mp.getByRole('log')).toContainText('BROWSER_REMOVE_789');
-  await ap.getByRole('button', { name: '有限期消息', exact: true }).click();
+  await ap.getByRole('link', { name: '有限期消息', exact: true }).click();
   await expect(ap.getByText('BROWSER_REMOVE_789', { exact: true })).toBeVisible();
   const article = ap.locator('article').filter({ hasText: 'BROWSER_REMOVE_789' });
   await article.getByRole('button', { name: '移除原文', exact: true }).click();
@@ -595,7 +597,7 @@ try {
   await ap.getByRole('button', { name: '确认执行', exact: true }).click();
   await expect(mp.getByRole('log')).not.toContainText('BROWSER_REMOVE_789');
   await expect(mp.getByRole('log')).toContainText('消息已移除');
-  await ap.getByRole('button', { name: '房间与 Session', exact: true }).click();
+  await ap.getByRole('link', { name: '房间与 Session', exact: true }).click();
   await expect(ap.getByRole('heading', { name: '浏览器公开共学' })).toBeVisible();
   await ap.screenshot({ path: resolve(directory, 'admin-rooms.png'), fullPage: true });
   await mp.screenshot({ path: resolve(directory, 'owner-mobile.png'), fullPage: true });
@@ -612,7 +614,7 @@ try {
   await expect(
     pp.getByText('你是中途加入，已立即同步当前阶段，从入座连接后开始个人计时。'),
   ).toBeVisible();
-  await ap.getByRole('button', { name: '用户管理', exact: true }).click();
+  await ap.getByRole('link', { name: '用户管理', exact: true }).click();
   await ap.getByLabel('搜索账号或昵称').fill('outsider_six');
   await ap.getByRole('button', { name: '搜索', exact: true }).click();
   await ap.getByRole('button', { name: '封禁', exact: true }).click();
@@ -620,7 +622,7 @@ try {
   await ap.getByRole('button', { name: '确认执行', exact: true }).click();
   await expect(pp).toHaveURL(/login/);
   await expect(pp.getByRole('heading', { name: '浏览器公开共学' })).toBeHidden();
-  await ap.getByRole('button', { name: '操作审计', exact: true }).click();
+  await ap.getByRole('link', { name: '操作审计', exact: true }).click();
   await expect(ap.getByText('原因：浏览器即时封禁验证')).toBeVisible();
   assert.deepEqual(errors, []);
   await browser.close();
