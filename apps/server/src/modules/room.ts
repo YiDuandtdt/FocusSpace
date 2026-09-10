@@ -9,6 +9,7 @@ import { openPresence, closePresence } from './presence.js';
 import { finishSession, reconnectDeadline } from './session.js';
 import { recentMessages } from './chat.js';
 import { summary, learningFeedback } from './record.js';
+import { currentRules, safeEquipment } from './growth.js';
 import {
   DEFAULT_SPACE,
   readSpace,
@@ -90,7 +91,11 @@ export async function createRoom(
         (await tx.personalSpace.create({
           data: { userId, config: JSON.stringify(DEFAULT_SPACE) },
         }));
-      const config = readSpace(personal.config);
+      const { space: config } = await safeEquipment(
+        tx,
+        readCharacter(creator.characterConfig),
+        readSpace(personal.config),
+      );
       const roomSpace: SpaceSnapshot = {
         config,
         seed: stableSeed(userId),
@@ -109,7 +114,11 @@ export async function createRoom(
           owner: { connect: { id: userId } },
           capacity: ROOM_CAPACITY,
           session: {
-            create: { focusSeconds: input.focusSeconds, breakSeconds: input.breakSeconds },
+            create: {
+              focusSeconds: input.focusSeconds,
+              breakSeconds: input.breakSeconds,
+              rewardRules: JSON.stringify(await currentRules(tx)),
+            },
           },
           members: { create: { userId, seatIndex: 0 } },
         },
@@ -207,6 +216,17 @@ export async function snapshot(roomId: string, userId: string): Promise<RoomSnap
     }),
   ]);
   const retained = room.members.filter((m) => !m.leftAt);
+  for (const m of room.members) {
+    const safe = await safeEquipment(db, readCharacter(m.user.characterConfig), readSpace(null));
+    m.user.characterConfig = JSON.stringify(safe.character);
+  }
+  if (room.spaceSnapshot) {
+    const snapshot = JSON.parse(room.spaceSnapshot) as SpaceSnapshot;
+    snapshot.config = (
+      await safeEquipment(db, readCharacter(null), readSpace(JSON.stringify(snapshot.config)))
+    ).space;
+    room.spaceSnapshot = JSON.stringify(snapshot);
+  }
   return {
     room: {
       id: room.id,

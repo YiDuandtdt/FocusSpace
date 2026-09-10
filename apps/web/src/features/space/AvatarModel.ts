@@ -122,12 +122,24 @@ export function createAvatar(member: Member): AvatarModel {
       const raised = (status === 'READY' || status === 'ENDED') && index === 1;
       arm.rotation.x = approach(
         arm.rotation.x,
-        focused ? -0.62 : raised ? -2.55 : rest ? -0.35 : -0.12,
+        focused
+          ? -0.62
+          : raised
+            ? -2.55
+            : rest && c.motion === 'motion.stretch'
+              ? -2.7
+              : rest
+                ? -0.35
+                : -0.12,
         blend,
       );
       arm.rotation.z = approach(
         arm.rotation.z,
-        rest ? (index ? 1 : -1) * 0.48 : raised ? -0.22 : 0,
+        rest
+          ? (index ? 1 : -1) * (c.motion === 'motion.stretch' ? 0.75 : 0.48)
+          : raised
+            ? -0.22
+            : 0,
         blend,
       );
       forearm.rotation.x = approach(

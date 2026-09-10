@@ -3,6 +3,7 @@ import { clearDrafts } from './preferences';
 import type { User } from '@focusspace/shared';
 import { api, errorMessage, RequestError } from './api';
 type AuthState = {
+  isolatedDemo: boolean;
   user: User | null;
   currentRoomId: string | null;
   loading: boolean;
@@ -13,13 +14,17 @@ type AuthState = {
 };
 const Context = createContext<AuthState | null>(null);
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const [isolatedDemo, setIsolatedDemo] = useState(false);
   const [user, setUser] = useState<User | null>(null);
   const [currentRoomId, setCurrentRoomId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const refresh = useCallback(async () => {
     try {
-      const data = await api<{ user: User; currentRoomId: string | null }>('/auth/me');
+      const data = await api<{ user: User; currentRoomId: string | null; isolatedDemo?: boolean }>(
+        '/auth/me',
+      );
+      setIsolatedDemo(!!data.isolatedDemo);
       setUser(data.user);
       setCurrentRoomId(data.currentRoomId);
       setError('');
@@ -63,7 +68,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setCurrentRoomId(null);
   };
   return (
-    <Context.Provider value={{ user, currentRoomId, loading, error, refresh, setUser, logout }}>
+    <Context.Provider
+      value={{ user, currentRoomId, loading, error, refresh, setUser, logout, isolatedDemo }}
+    >
       {children}
     </Context.Provider>
   );

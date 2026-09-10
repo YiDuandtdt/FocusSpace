@@ -12,10 +12,17 @@ import './styles.css';
 import './features/space/space.css';
 import './features/space/immersion.css';
 import './experience.css';
+import './features/growth.css';
 import './features/space/personal.css';
 import { RouteAnnouncer } from './navigation';
 
 const RoomPage = lazy(() => import('./pages/RoomPage').then((m) => ({ default: m.RoomPage })));
+const GrowthPage = lazy(() =>
+  import('./pages/GrowthPage').then((m) => ({ default: m.GrowthPage })),
+);
+const GrowthAdminPage = lazy(() =>
+  import('./pages/GrowthAdminPage').then((m) => ({ default: m.GrowthAdminPage })),
+);
 const AdminPage = lazy(() => import('./pages/AdminPage').then((m) => ({ default: m.AdminPage })));
 const PersonalSpacePage = lazy(() =>
   import('./pages/PersonalSpacePage').then((m) => ({ default: m.PersonalSpacePage })),
@@ -34,10 +41,13 @@ function Protected({ children }: { children: ReactNode }) {
   );
 }
 function App() {
-  const { loading, error, refresh, user } = useAuth();
+  const { loading, error, refresh, user, isolatedDemo } = useAuth();
   return (
     <Shell>
       <RouteAnnouncer />
+      {isolatedDemo ? (
+        <Notice>隔离演示环境：此处的经验、学习币和装扮不会进入正式账户。</Notice>
+      ) : null}
       {loading ? (
         <section className="empty-state">
           <h2>正在打开你的空间…</h2>
@@ -67,6 +77,22 @@ function App() {
             }
           >
             <Routes key={user?.id ?? 'anonymous'}>
+              <Route
+                path="/growth"
+                element={
+                  <Protected>
+                    <GrowthPage />
+                  </Protected>
+                }
+              />
+              <Route
+                path="/admin/growth"
+                element={
+                  <Protected>
+                    <GrowthAdminPage />
+                  </Protected>
+                }
+              />
               <Route
                 path="/space"
                 element={

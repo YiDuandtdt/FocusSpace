@@ -2,6 +2,7 @@ import type { Prisma } from '@prisma/client';
 import type { SessionSummary, LearningFeedback, HistoryPage } from '@focusspace/shared';
 import { db } from '../db.js';
 import { AppError } from '../errors.js';
+import { awardRecord, rewardSummary, compensateRewards } from './growth.js';
 
 type Span = [number, number];
 // Merge overlaps for time totals. Touching intervals remain separate for the
@@ -28,7 +29,7 @@ export function intersect(a: Span[], b: Span[]): Span[] {
   }
   return result;
 }
-export async function saveRecords(tx: Prisma.TransactionClient, roomId: string) {
+export async function saveRecords(tx: Prisma.TransactionClient, roomId: string, at = new Date()) {
   const room = await tx.room.findUniqueOrThrow({
     where: { id: roomId },
     include: { members: true, session: true },
@@ -41,7 +42,7 @@ export async function saveRecords(tx: Prisma.TransactionClient, roomId: string) 
     tx.presenceInterval.findMany({ where: { sessionId: room.sessionId, endAt: { not: null } } }),
     tx.task.findMany({
       where: { sessionId: room.sessionId },
-      select: { userId: true, completed: true },
+      select: { userId: true, completed: true, createdAt: true, completedAt: true },
     }),
   ]);
   const focus: Span[] = phases.map((p) => [p.startAt.getTime(), p.endAt!.getTime()]);
@@ -71,11 +72,40 @@ export async function saveRecords(tx: Prisma.TransactionClient, roomId: string) 
         ([id, other]) => id !== member.userId && intersect(spans, other).length > 0,
       ).length,
     };
-    await tx.studyRecord.upsert({
+    const saved = await tx.studyRecord.upsert({
       where: { sessionId_userId: { sessionId: room.sessionId, userId: member.userId } },
-      create: { sessionId: room.sessionId, userId: member.userId, ...record },
+      create: {
+        sessionId: room.sessionId,
+        userId: member.userId,
+        ...record,
+        settledAt: at,
+        rewardState:
+          room.session.focusSeconds === 45 && room.session.breakSeconds === 15
+            ? 'DEMO'
+            : room.session.rewardRules
+              ? 'PENDING'
+              : 'LEGACY',
+        rewardFacts: JSON.stringify({
+          goal: own.some(
+            (t) =>
+              t.completed &&
+              t.completedAt &&
+              t.completedAt <= at &&
+              room.session.startedAt &&
+              t.createdAt <= room.session.startedAt,
+          ),
+          togetherSeconds: Math.floor(
+            mergeSpans(
+              [...studied]
+                .filter(([id]) => id !== member.userId)
+                .flatMap(([, other]) => intersect(spans, other)),
+            ).reduce((sum, [a, b]) => sum + b - a, 0) / 1000,
+          ),
+        }),
+      },
       update: {},
     });
+    await awardRecord(tx, saved.id);
   }
 }
 export async function summary(sessionId: string, userId: string): Promise<SessionSummary> {
@@ -86,6 +116,11 @@ export async function summary(sessionId: string, userId: string): Promise<Sessio
   if (!session?.room || !session.room.members.some((m) => m.userId === userId))
     throw new AppError('ROOM_NOT_FOUND', '学习记录不存在', 404);
   if (session.phase !== 'ENDED') throw new AppError('INVALID_PHASE', '本次共学还未结束', 409);
+  try {
+    await compensateRewards(userId);
+  } catch {
+    console.warn('Reward compensation deferred; pending records retained');
+  }
   const [record, phases] = await Promise.all([
     db.studyRecord.findUnique({ where: { sessionId_userId: { sessionId, userId } } }),
     db.phaseInterval.findMany({ where: { sessionId, phase: 'FOCUS', endAt: { not: null } } }),
@@ -99,6 +134,7 @@ export async function summary(sessionId: string, userId: string): Promise<Sessio
     studiedWith: 0,
   };
   return {
+    reward: record ? await rewardSummary(record.id) : undefined,
     sessionId,
     roomId: session.room.id,
     roomName: session.room.name,

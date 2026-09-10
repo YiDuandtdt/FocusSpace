@@ -81,6 +81,7 @@ export function OwnerControls({
       </div>
       <p className="muted">
         断线宽限期结束后，由最早入座的在线、非暂离成员接任；无人可接任时结束共学。
+        提前离开会保留有效学习，奖励在本场最终结束后统一到账。
       </p>
     </details>
   );

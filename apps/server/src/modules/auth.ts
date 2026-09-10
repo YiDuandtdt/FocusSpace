@@ -7,6 +7,7 @@ import { DEFAULT_SPACE, readCharacter } from '@focusspace/shared';
 import { db, serialize } from '../db.js';
 import { config } from '../config.js';
 import { AppError } from '../errors.js';
+import { ensureBasics } from './growth.js';
 
 export const cookieName = 'focusspace_session';
 export const digest = (value: string) => createHash('sha256').update(value).digest('hex');
@@ -49,14 +50,18 @@ export async function register(input: {
     throw new AppError('CONFLICT', '这个账号已被使用，请换一个', 409);
   const passwordHash = await hash(input.password, 12);
   return publicUser(
-    await db.user.create({
-      data: {
-        username: input.username,
-        nickname: input.nickname,
-        avatarId: input.avatarId,
-        passwordHash,
-        personalSpace: { create: { config: JSON.stringify(DEFAULT_SPACE) } },
-      },
+    await db.$transaction(async (tx) => {
+      const user = await tx.user.create({
+        data: {
+          username: input.username,
+          nickname: input.nickname,
+          avatarId: input.avatarId,
+          passwordHash,
+          personalSpace: { create: { config: JSON.stringify(DEFAULT_SPACE) } },
+        },
+      });
+      await ensureBasics(tx, user.id);
+      return user;
     }),
   );
 }

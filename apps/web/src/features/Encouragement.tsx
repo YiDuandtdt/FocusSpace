@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { RoomCommand } from '@focusspace/shared';
 import { errorMessage } from '../api';
+import { useAuth } from '../auth';
 export function Encouragement({
   disabled,
   command,
@@ -8,6 +9,7 @@ export function Encouragement({
   disabled: boolean;
   command: (type: RoomCommand, payload: unknown) => Promise<void>;
 }) {
+  const { user } = useAuth();
   const [busy, setBusy] = useState(false),
     [cooldown, setCooldown] = useState(false),
     [message, setMessage] = useState('');
@@ -38,7 +40,12 @@ export function Encouragement({
       <span>
         {message || (cooldown ? '已送出心意，安静陪伴一会儿' : '安静鼓励 · 每 10 秒一次')}
       </span>
-      {(['🌱', '💪', '☕'] as const).map((symbol) => (
+      {[
+        '🌱',
+        '💪',
+        '☕',
+        ...(user?.character?.expression === 'expression.sparkle' ? ['✨'] : []),
+      ].map((symbol) => (
         <button
           className="text-button"
           key={symbol}

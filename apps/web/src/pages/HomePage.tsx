@@ -8,6 +8,7 @@ import { Notice, RhythmFields } from '../components';
 import { readPreferences, savePreferences } from '../preferences';
 import { PublicRooms } from '../features/PublicRooms';
 import { HistoryPage } from './HistoryPage';
+import { GrowthEntry } from '../features/GrowthFeedback';
 
 export function HomePage() {
   const { user, currentRoomId, refresh } = useAuth();
@@ -52,6 +53,7 @@ export function HomePage() {
   }
   return (
     <div className="home-page">
+      <GrowthEntry />
       <section className="home-intro">
         <div>
           <span className="eyebrow">YOUR QUIET CORNER</span>

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 export * from './personal.js';
+export * from './growth.js';
 import type { CharacterConfig, SpaceSnapshot } from './personal.js';
 
 export const AVATARS = ['lake', 'sage', 'lilac', 'sun'] as const;
@@ -207,6 +208,7 @@ export type ChatEvent = {
   data: ChatMessage;
 };
 export type SessionSummary = {
+  reward?: import('./growth.js').RewardSummary;
   sessionId: string;
   roomId: string;
   roomName: string;
@@ -241,7 +243,7 @@ export type LightEvent = {
   roomId: string;
   sessionId: string;
   userId: string;
-  symbol: '🌱' | '💪' | '☕' | '✓';
+  symbol: '🌱' | '💪' | '☕' | '✓' | '✨';
   createdAt: number;
 };
 export type HistoryPage = {

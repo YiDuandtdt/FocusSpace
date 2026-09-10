@@ -19,6 +19,7 @@ import { chromium, expect, type Browser, type Page } from '@playwright/test';
 import {
   DEFAULT_CHARACTER,
   DEFAULT_SPACE,
+  GROWTH_CATALOG,
   type PersonalSpace,
   type RoomSnapshot,
   type Ack,
@@ -35,7 +36,7 @@ const legacy = new DatabaseSync(resolve(directory, 'verify.db'));
 const migrations = readdirSync('prisma/migrations')
   .filter((n) => n.startsWith('20'))
   .sort();
-for (const name of migrations.filter((n) => !n.endsWith('personal_space')))
+for (const name of migrations.filter((n) => n < '202609090001_personal_space'))
   legacy.exec(readFileSync(`prisma/migrations/${name}/migration.sql`, 'utf8'));
 const passwordHash = await hash('PersonalSpace42!', 4);
 legacy
@@ -52,9 +53,20 @@ assert.deepEqual(legacy.prepare('SELECT * FROM StudyRecord').all(), recordBefore
 assert.deepEqual(legacy.prepare('SELECT * FROM StudySession').all(), sessionBefore);
 assert.equal(legacy.prepare('SELECT COUNT(*) n FROM PersonalSpace').get()!.n, 1);
 assert.equal(legacy.prepare('SELECT onboarding FROM User').get()!.onboarding, 'SKIPPED');
+for (const name of migrations.filter((n) => n > '202609090001_personal_space'))
+  legacy.exec(readFileSync(`prisma/migrations/${name}/migration.sql`, 'utf8'));
 legacy.close();
 console.log('PASS incremental migration preserves legacy session and study record exactly');
 const database = new PrismaClient({ datasourceUrl: databaseUrl });
+// Geometry/editor regression fixture: grant catalog assets only in this disposable database.
+async function grantTestAssets(userId: string) {
+  for (const item of GROWTH_CATALOG)
+    await database.ownedAsset.upsert({
+      where: { userId_assetId: { userId, assetId: item.id } },
+      create: { userId, assetId: item.id, source: 'ISOLATED_TEST' },
+      update: {},
+    });
+}
 const listener = createServer().listen(0, '127.0.0.1');
 await once(listener, 'listening');
 const address = listener.address();
@@ -124,6 +136,7 @@ async function login(username: string): Promise<Actor> {
   socket.connect();
   await ready;
   const actor = { id: user.id, cookie, socket };
+  await grantTestAssets(user.id);
   actors.push(actor);
   return actor;
 }
@@ -192,6 +205,10 @@ try {
   await expect(setup).toHaveURL(/\/space\?setup=1/);
   await expect(setup.locator('.character-preview canvas')).toBeVisible();
   await shot(setup, '01-first-setup.png');
+  await grantTestAssets(
+    (await database.user.findUniqueOrThrow({ where: { username: 'personal_host' } })).id,
+  );
+  await setup.reload();
   await setup.getByRole('button', { name: '灵感手记' }).click();
   await setup.getByRole('button', { name: '下一步：看看空间' }).click();
   await expect(setup.locator('.scene-host canvas')).toBeVisible();
@@ -390,15 +407,13 @@ try {
   assert.deepEqual(a.members, b.members);
   await shot(page, '05-multiplayer-lobby.png', '.space-panel');
   const sceneMap = (p: Page) =>
-    p
-      .locator('.scene-seat-label')
-      .evaluateAll((labels) =>
-        labels.map((l) => ({
-          seat: (l as HTMLElement).dataset.seat,
-          user: (l as HTMLElement).dataset.userId,
-          status: (l as HTMLElement).dataset.status,
-        })),
-      );
+    p.locator('.scene-seat-label').evaluateAll((labels) =>
+      labels.map((l) => ({
+        seat: (l as HTMLElement).dataset.seat,
+        user: (l as HTMLElement).dataset.userId,
+        status: (l as HTMLElement).dataset.status,
+      })),
+    );
   assert.deepEqual(await sceneMap(page), await sceneMap(pageB));
   personal = await request('/users/me/space', host);
   await request(

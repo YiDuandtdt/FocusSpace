@@ -37,9 +37,18 @@ import { advanceRoom, recoverSessions } from './modules/session.js';
 import { summary, history } from './modules/record.js';
 import { retainData } from './modules/retention.js';
 import { personalSpace, savePersonal, decodeAvatar } from './modules/personal.js';
+import {
+  initGrowth,
+  growthView,
+  acquire,
+  equip,
+  growthAdmin,
+  currentRules,
+} from './modules/growth.js';
 
 await db.$connect();
 await db.$queryRaw`PRAGMA journal_mode=WAL`;
+await initGrowth();
 await recoverSessions();
 await retainData();
 const app = express();
@@ -121,7 +130,11 @@ app.post('/api/auth/logout', async (req, res) => {
 });
 app.get('/api/auth/me', async (req, res) => {
   const auth = await authenticate(req.headers.cookie);
-  res.json({ user: publicUser(auth.user), currentRoomId: await currentRoom(auth.userId) });
+  res.json({
+    user: publicUser(auth.user),
+    currentRoomId: await currentRoom(auth.userId),
+    isolatedDemo: process.env.FOCUSSPACE_ISOLATED_DEMO === 'true',
+  });
 });
 app.patch('/api/users/me', async (req, res) => {
   const input = profileSchema.parse(req.body);
@@ -144,6 +157,42 @@ app.patch('/api/users/me', async (req, res) => {
     return publicUser(result.user);
   });
   res.json({ user });
+});
+app.get('/api/users/me/growth', async (req, res) => {
+  res.json(
+    await serialize(async () => {
+      const auth = await authenticate(req.headers.cookie);
+      return growthView(auth.userId);
+    }),
+  );
+});
+app.get('/api/users/me/sounds/:id', async (req, res) => {
+  const auth = await authenticate(req.headers.cookie);
+  const id = z.enum(['rain', 'birds', 'fire', 'stream']).parse(req.params.id);
+  if (id === 'stream') {
+    const [owned, item] = await Promise.all([
+      db.ownedAsset.findUnique({
+        where: { userId_assetId: { userId: auth.userId, assetId: 'sound.stream' } },
+      }),
+      db.growthItem.findUnique({ where: { id: 'sound.stream' } }),
+    ]);
+    if (!owned || item?.status === 'DISABLED')
+      throw new AppError('ASSET_LOCKED', '请先获取溪流环境音，或使用基础声音', 403);
+  }
+  res.sendFile(fileURLToPath(new URL(`../../web/dist/audio/${id}.mp3`, import.meta.url)));
+});
+app.post('/api/users/me/growth/:action', async (req, res) => {
+  res.json(
+    await serialize(async () => {
+      const auth = await authenticate(req.headers.cookie);
+      if (req.params.action === 'acquire') return acquire(auth.userId, req.body);
+      if (req.params.action !== 'equip') throw new AppError('NOT_FOUND', '操作不存在', 404);
+      const result = await equip(auth.userId, req.body);
+      const roomId = await currentRoom(auth.userId);
+      if (roomId) await realtime.broadcast(roomId);
+      return result;
+    }),
+  );
 });
 app.get('/api/users/me/space', async (req, res) => {
   const auth = await authenticate(req.headers.cookie);
@@ -285,6 +334,54 @@ app.get('/api/admin/overview', async (req, res) => {
     await serialize(async () => {
       await requireAdmin(req.headers.cookie);
       return adminOverview(realtime.metrics());
+    }),
+  );
+});
+app.get('/api/admin/growth', async (req, res) => {
+  res.json(
+    await serialize(async () => {
+      await requireAdmin(req.headers.cookie);
+      const userId = z
+        .string()
+        .max(100)
+        .parse(req.query.userId ?? '');
+      const page = z.coerce
+        .number()
+        .int()
+        .min(1)
+        .max(100000)
+        .parse(req.query.page ?? 1);
+      const where = userId ? { userId } : {};
+      const [items, rules, ledger, total, assets, account] = await Promise.all([
+        db.growthItem.findMany(),
+        currentRules(),
+        db.growthLedger.findMany({
+          where,
+          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+          skip: (page - 1) * 30,
+          take: 30,
+        }),
+        db.growthLedger.count({ where }),
+        userId ? db.ownedAsset.findMany({ where: { userId } }) : [],
+        userId ? db.growthAccount.findUnique({ where: { userId } }) : null,
+      ]);
+      return { items, rules, ledger, total, assets, account, page };
+    }),
+  );
+});
+app.post('/api/admin/growth', async (req, res) => {
+  res.json(
+    await serialize(async () => {
+      const auth = await requireAdmin(req.headers.cookie);
+      const result = await growthAdmin(auth.userId, req.body);
+      for (const room of await db.room.findMany({
+        where: { session: { phase: { not: 'ENDED' } } },
+        select: { id: true },
+      })) {
+        await bump(db, room.id);
+        await realtime.broadcast(room.id);
+      }
+      return result;
     }),
   );
 });

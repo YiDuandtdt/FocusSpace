@@ -11,6 +11,7 @@ import { useAuth } from '../auth';
 import { useDraft } from '../preferences';
 import { Modal, Notice } from '../components';
 import { errorMessage } from '../api';
+import { RewardFeedback } from './GrowthFeedback';
 
 export function PhaseTimer({
   session,
@@ -55,7 +56,7 @@ export function PhaseTimer({
             ? '休息即将结束，准备回到自己的目标。'
             : session.phase === 'FOCUS'
               ? '各自推进，一起认真。'
-              : '伸个懒腰，也和搭子聊两句。'}
+              : '伸个懒腰，也和搭子聊两句。奖励在本场结束后统一到账，提前离开的有效学习也会保留。'}
       </p>
       {session.demoMode ? (
         <small className="demo-label">演示节奏 · 45 秒专注 / 15 秒休息</small>
@@ -437,6 +438,7 @@ export function SummaryPanel({ summary }: { summary: SessionSummary }) {
     <section className="panel summary-panel">
       <span className="eyebrow">SESSION SUMMARY</span>
       <h2>这次相聚先到这里</h2>
+      <RewardFeedback reward={summary.reward} />
       <p className="muted">
         {summary.startedAt
           ? `${reasons[summary.endReason ?? ''] ?? '共学结束'} · 房间完成 ${summary.roomRoundsCompleted} 轮专注`

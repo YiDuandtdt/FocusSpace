@@ -94,7 +94,7 @@ export async function finishSession(tx: Tx, roomId: string, reason: string, at =
   });
   for (const member of room.members)
     await closePresence(tx, room.sessionId, member.userId, at, reason);
-  await saveRecords(tx, roomId);
+  await saveRecords(tx, roomId, at);
   await tx.studySession.update({
     where: { id: room.sessionId },
     data: { phase: 'ENDED', phaseEndAt: null, endedAt: at, endReason: reason },

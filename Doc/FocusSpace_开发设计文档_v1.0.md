@@ -1,3 +1,25 @@
+# 2026-09-10 增补：成长结算与资产事务
+
+本阶段新增经验、学习币和永久资产兑换，旧文档中的不做经济 / 装扮条款已被明确授权的新范围替代。
+
+`202609090002_growth` 只增量添加结构：StudySession.rewardRules 保存新建时的不可变规则快照；StudyRecord.rewardState 默认 LEGACY，新增 rewardFacts 与 settledAt。旧记录不会自动变为 PENDING。GrowthAccount 保存经验 / 余额 / 服务端等级；GrowthItem 仅引用实现目录；OwnedAsset 以 userId + assetId 为主键；GrowthLedger 保存唯一业务 key、唯一 recordId、来源、规则版本、变动、变后值、奖励日、每日奖励标志和时间；GrowthSettings 保存下一批新 Session 的规则。
+
+`finishSession → saveRecords → awardRecord` 在原 SQLite 写队列及同一个 Prisma 事务中完成：关闭阶段 / 参与区间、保存记录、计算奖励、写流水、更新余额 / 等级、标记到账、结束 Session。任一步失败整体回滚，重试不会丢失记录与奖励之间的关系。记录以 Session + 用户唯一，学习流水以 recordId 唯一，重复结束无法重复发放。只要存在可恢复的 PENDING 记录，启动及读取成长账户会按 settledAt 顺序幂等补偿；已有流水只修复状态。历史 LEGACY 与 DEMO 永不参与此扫描。
+
+结算事实固定于记录生成时：任务必须在 startedAt 前创建且结束前完成，至少 300 秒有效学习才可获得每日目标奖；共学按当前用户有效区间与其他人区间交集的并集计算，至少 300 秒，一次只能计一份。经验与币基础奖励以有效整分钟计算；轮次沿用不中断完整参与判定，另外以每 1500 有效秒最多一次限额，避免短轮次膨胀。每日奖励采用 settledAt + UTC+8 的日期；跨日整场基础奖励不拆分，奖金算在结算日，升级规则也不会重算旧流水。
+
+兑换在同一事务中执行：检查已拥有 / 上下架 / 等级 → 条件扣币（余额 >= 当前价格）→ 授予唯一资产 → 写唯一兑换流水 → CommandReceipt。并发写仍走单实例 serialize 队列，数据库约束是最后防线。成长类命令回执不进入原七天清理，管理员补偿和资产操作长期支持请求重放。相同请求 ID 载荷不同会冲突；再次购买已拥有资产返回成功且不扣币。
+
+个人保存与单件装备都调用 validateEquipment，前端不能绕过拥有权。safeEquipment 在个人读取、创建快照及房间快照下发时为 DISABLED 资产替换同槽基础项。DELISTED 仅限制获取，已有装备保留。普通个人修改不会重写房间 spaceSnapshot；问题资产回退属于可用性例外。角色动作通过 AvatarModel 的休息姿态实现，星光鼓励沿用限频轻事件且额外检查装备 / 归属 / 停用状态。环境音装备由服务端校验，实际播放接口再检查溪流资格；商店允许试听公开预览资源，不属于私有音频 DRM。
+
+新增 API：GET /api/users/me/growth；POST /api/users/me/growth/acquire、equip；GET /api/users/me/sounds/:id；GET /api/admin/growth（用户 ID / 分页）；POST /api/admin/growth（item / rules / compensate）。复用 Cookie 身份、Origin 检查、限频、服务端 ADMIN 检查与 AdminAudit。所有管理员修改强制原因和 UUID；补偿金额有界，余额不能负，经验只能增加。普通用户无奖励数值写接口。
+
+初始化：SQL 为旧用户保留当前搭配的 MIGRATION 归属，基础物品在启动按用户补齐；注册后的首次成长 / 保存操作也幂等初始化。不会将全部旧学习记录标成待发。人工补偿必须有原因与审计，不以改历史记录来反复重算。
+
+部署保持一个 Node 写实例 + 本地 SQLite。升级前备份并停旧服务，再 migrate deploy、generate、build、重启。横向多实例、任务队列、独立数据库服务及大规模资产目录不属于此阶段。可控时间、事务触发器故障和浏览器验证见 scripts/verify-growth.ts；demo-growth.ts 无视外部 DATABASE_URL，创建全新 .tmp 数据库并只绑定 127.0.0.2:4319，无生产写入口。
+
+以下原文保留；冲突处以上述增补及 [本阶段交付说明](阶段交付_学习成长与装扮.md) 为准。
+
 # FocusSpace 开发设计文档
 
 > 个人空间升级（2026-09-09，v1.1）：本阶段明确扩展原 PRD。角色、个人空间、创建时快照、安全头像上传与统一程序化美术已实现。与下文旧基线冲突时，以 [v1.1 产品需求](FocusSpace_产品需求文档_PRD_v1.1.md) 和 [个人空间开发设计与交付](阶段交付_个人空间与卡通低模.md) 为准。现有公开房间、任务、聊天、统计、恢复和后台能力继续保留。

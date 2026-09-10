@@ -500,7 +500,7 @@ export function RoomPage() {
           <p className="muted">
             {data.myPermissions.isOwner
               ? '这会结束所有人的共学并结算全房。如仅自己离开，请取消，返回完整界面使用“转交后自己离开”。'
-              : '你的座位会被释放，之后可以用房间码重新加入。'}
+              : '你的座位会被释放，之后可以用房间码重新加入。已记录的有效学习会保留，在这场共学最终结束后统一结算经验与学习币。'}
           </p>
           <div className="dialog-actions">
             <button className="button secondary" onClick={() => setConfirmLeave(false)}>

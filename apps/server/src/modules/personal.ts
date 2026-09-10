@@ -9,6 +9,7 @@ import {
 } from '@focusspace/shared';
 import { db } from '../db.js';
 import { AppError } from '../errors.js';
+import { safeEquipment, validateEquipment } from './growth.js';
 
 export async function personalSpace(userId: string): Promise<PersonalSpace> {
   const user = await db.user.findUniqueOrThrow({
@@ -16,8 +17,11 @@ export async function personalSpace(userId: string): Promise<PersonalSpace> {
     include: { personalSpace: true },
   });
   return {
-    character: readCharacter(user.characterConfig),
-    space: readSpace(user.personalSpace?.config),
+    ...(await safeEquipment(
+      db,
+      readCharacter(user.characterConfig),
+      readSpace(user.personalSpace?.config),
+    )),
     revision: user.personalSpace?.revision ?? 1,
     seed: stableSeed(userId),
     onboarding: user.onboarding as PersonalSpace['onboarding'],
@@ -26,6 +30,7 @@ export async function personalSpace(userId: string): Promise<PersonalSpace> {
 export async function savePersonal(userId: string, body: unknown) {
   const input = personalSaveSchema.parse(body);
   await db.$transaction(async (tx) => {
+    await validateEquipment(tx, userId, input.character, input.space);
     const current = await tx.personalSpace.upsert({
       where: { userId },
       create: { userId, config: JSON.stringify(DEFAULT_SPACE) },

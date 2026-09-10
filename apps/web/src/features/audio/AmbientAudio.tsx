@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '../../auth';
 import { readPreferences, savePreferences } from '../../preferences';
 import { tracks, isTrackId, type TrackId } from './tracks';
+import { api } from '../../api';
+import type { GrowthView } from '@focusspace/shared';
 
 export function AmbientAudio({ recommended }: { recommended: string }) {
   const { user } = useAuth();
@@ -12,6 +14,24 @@ export function AmbientAudio({ recommended }: { recommended: string }) {
   const [sound, setSound] = useState(() => readPreferences(user!.id).sound);
   const [volume, setVolume] = useState(() => readPreferences(user!.id).volume);
   const [error, setError] = useState('');
+  const [streamOwned, setStreamOwned] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    void api<GrowthView>('/users/me/growth')
+      .then((g) => {
+        if (alive) {
+          const allowed = g.catalog.some(
+            (i) => i.id === 'sound.stream' && i.owned && i.status !== 'DISABLED',
+          );
+          setStreamOwned(allowed);
+          if (!allowed) setSound((s) => (s === 'stream' ? 'birds' : s));
+        }
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [user!.id]);
   useEffect(() => {
     const element = audio.current!;
     element.volume = readPreferences(user!.id).volume / 100;
@@ -27,7 +47,12 @@ export function AmbientAudio({ recommended }: { recommended: string }) {
     const version = ++generation.current;
     setPending(true);
     setError('');
-    const src = tracks.find((track) => track.id === id)!.src;
+    if (id === 'stream' && !streamOwned) {
+      setPending(false);
+      setError('请先在成长与装扮中获取溪流环境音。');
+      return;
+    }
+    const src = `/api/users/me/sounds/${id}`;
     if (element.getAttribute('src') !== src) element.src = src;
     else if (element.error) element.load();
     try {
@@ -83,8 +108,13 @@ export function AmbientAudio({ recommended }: { recommended: string }) {
             }}
           >
             {tracks.map((track) => (
-              <option value={track.id} key={track.id}>
+              <option
+                value={track.id}
+                key={track.id}
+                disabled={track.id === 'stream' && !streamOwned}
+              >
                 {track.name}
+                {track.id === 'stream' && !streamOwned ? ' · 待获取' : ''}
               </option>
             ))}
           </select>

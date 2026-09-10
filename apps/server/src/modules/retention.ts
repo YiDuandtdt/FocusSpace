@@ -23,6 +23,7 @@ export async function retainData(at = new Date()) {
     await tx.commandReceipt.deleteMany({
       where: {
         createdAt: { lt: receiptCutoff },
+        NOT: { commandType: { startsWith: 'growth:' } },
         OR: [{ roomId: null }, { roomId: { notIn: active.map((room) => room.id) } }],
       },
     });

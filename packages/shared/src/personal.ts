@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-// Stable, free asset IDs. Geometry and previews consume the same generation parameters.
+// Stable asset IDs. Ownership and prices are maintained by the server.
 export const ASSETS = {
   skin: {
     'skin.cream': ['奶杏', '#f1c9a5'],
@@ -37,6 +37,11 @@ export const ASSETS = {
   window: { 'window.fern': ['窗边绿植', '#819970'], 'window.flowers': ['一束小花', '#d8ac7e'] },
   rug: { 'rug.moss': ['苔藓编织', '#94a68b'], 'rug.sand': ['麦色编织', '#c9b78d'] },
   light: { 'light.day': ['柔和天光', '#fff1d5'], 'light.warm': ['暖灯陪伴', '#ffd3a0'] },
+  motion: { 'motion.calm': ['安静呼吸', '#8aab9a'], 'motion.stretch': ['休息伸展', '#b6a1c1'] },
+  expression: {
+    'expression.basic': ['日常鼓励', '#8aab9a'],
+    'expression.sparkle': ['星光鼓励', '#e7bc68'],
+  },
 } as const;
 export type AssetCategory = keyof typeof ASSETS;
 export const assetOptions = (category: AssetCategory) =>
@@ -45,7 +50,7 @@ export function assetColor(category: AssetCategory, id: string) {
   return assetOptions(category).find((a) => a.id === id)?.color ?? '#a99a82';
 }
 const id = <K extends AssetCategory>(category: K) =>
-  z.string().refine((value) => Object.hasOwn(ASSETS[category], value), '请选择可用的免费资产');
+  z.string().refine((value) => Object.hasOwn(ASSETS[category], value), '请选择目录内的资产');
 export const characterSchema = z
   .object({
     version: z.literal(1),
@@ -54,6 +59,8 @@ export const characterSchema = z
     hairColor: id('hairColor'),
     outfit: id('outfit'),
     accessory: id('accessory'),
+    motion: id('motion').default('motion.calm'),
+    expression: id('expression').default('expression.basic'),
   })
   .strict();
 export type CharacterConfig = z.infer<typeof characterSchema>;
@@ -79,6 +86,8 @@ export const DEFAULT_CHARACTER: CharacterConfig = {
   hairColor: 'hair.ink',
   outfit: 'outfit.sage',
   accessory: 'accessory.none',
+  motion: 'motion.calm',
+  expression: 'expression.basic',
 };
 export const DEFAULT_SPACE: SpaceConfig = {
   version: 1,
@@ -135,7 +144,6 @@ export const ASSET_CATALOG = (Object.keys(ASSETS) as AssetCategory[]).flatMap((c
   assetOptions(category).map((asset) => ({
     ...asset,
     category,
-    free: true,
     slot: ['desktop', 'wall', 'window', 'rug'].includes(category) ? category : null,
     compatibleRooms: ['room.atelier', 'room.arch'],
     preview: { kind: 'procedural', color: asset.color },

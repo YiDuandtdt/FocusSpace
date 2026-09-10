@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   DEFAULT_CHARACTER,
@@ -9,6 +9,7 @@ import {
   type Member,
   type PersonalSpace,
   type SpaceConfig,
+  type GrowthView,
 } from '@focusspace/shared';
 import { useAuth } from '../auth';
 import { api, errorMessage } from '../api';
@@ -19,6 +20,7 @@ import { memberLabels } from '../features/space/memberPresentation';
 import { themes } from '../features/space/themes';
 import { AmbientAudio } from '../features/audio/AmbientAudio';
 import '../features/space/personal.css';
+const AssetsContext = createContext<Set<string>>(new Set());
 
 function Choices({
   category,
@@ -31,6 +33,7 @@ function Choices({
   value: string;
   onChange(value: string): void;
 }) {
+  const owned = useContext(AssetsContext);
   return (
     <fieldset className="asset-field">
       <legend>{label}</legend>
@@ -39,12 +42,16 @@ function Choices({
           <button
             type="button"
             key={a.id}
+            disabled={!owned.has(a.id)}
             aria-pressed={value === a.id}
             className={value === a.id ? 'selected' : ''}
             onClick={() => onChange(a.id)}
           >
             <i style={{ background: a.color }} aria-hidden="true" />
-            <span>{a.name}</span>
+            <span>
+              {a.name}
+              {!owned.has(a.id) ? ' · 待获取' : ''}
+            </span>
             {value === a.id ? <b aria-hidden="true">✓</b> : null}
           </button>
         ))}
@@ -53,6 +60,7 @@ function Choices({
   );
 }
 const presets: { name: string; character: CharacterConfig }[] = [
+  { name: '初见书屋', character: DEFAULT_CHARACTER },
   { name: '安静读者', character: { ...DEFAULT_CHARACTER, accessory: 'accessory.glasses' } },
   {
     name: '灵感手记',
@@ -75,6 +83,7 @@ const presets: { name: string; character: CharacterConfig }[] = [
   },
 ];
 export function PersonalSpacePage() {
+  const [owned, setOwned] = useState<Set<string>>(new Set());
   const { user, refresh } = useAuth(),
     navigate = useNavigate(),
     [params] = useSearchParams();
@@ -89,7 +98,13 @@ export function PersonalSpacePage() {
   const dirty = !!draft && JSON.stringify(draft) !== JSON.stringify(saved);
   async function load() {
     try {
-      const p = await api<PersonalSpace>('/users/me/space');
+      const [p, g] = await Promise.all([
+        api<PersonalSpace>('/users/me/space'),
+        api<GrowthView>('/users/me/growth'),
+      ]);
+      setOwned(
+        new Set(g.catalog.filter((i) => i.owned && i.status !== 'DISABLED').map((i) => i.id)),
+      );
       setSaved(p);
       setDraft(p);
       setError('');
@@ -192,318 +207,342 @@ export function PersonalSpacePage() {
       </section>
     );
   return (
-    <div className="personal-page">
-      <div className="personal-heading">
-        <div>
-          <span className="eyebrow">
-            {onboarding ? 'MAKE YOURSELF AT HOME' : 'A LITTLE PLACE OF YOUR OWN'}
-          </span>
-          <h1>{onboarding ? '先选一份，属于你的安静。' : '我的个人空间'}</h1>
-          <p>
-            {onboarding
-              ? '选个形象、一处风景就好。也可以直接开始，之后慢慢布置。'
-              : '把喜欢的样子留下来。下一次，邀请朋友来这里一起学习。'}
-          </p>
-        </div>
-        <span className="free-tag">基础搭配 · 全部免费</span>
-      </div>
-      {error ? <Notice>{error} 当前编辑内容已保留。</Notice> : null}
-      {notice ? <Notice tone="success">{notice}</Notice> : null}
-      <div className="personal-workbench">
-        <section className="personal-preview-panel">
-          <div className="personal-preview-heading">
-            <div>
-              <span className="eyebrow">LIVE PREVIEW</span>
-              <h2>{tab === 'space' ? `${user!.nickname}的自习室` : '每次入座，都是你'}</h2>
-            </div>
-            <span className="save-state">{dirty ? '● 尚未保存' : '✓ 已长期保存'}</span>
-          </div>
-          {tab === 'space' ? (
-            <StudySpace
-              members={members}
-              phase={
-                status === 'FOCUSING'
-                  ? 'FOCUS'
-                  : status === 'BREAKING'
-                    ? 'BREAK'
-                    : status === 'ENDED'
-                      ? 'ENDED'
-                      : 'LOBBY'
-              }
-              theme={draft.space.theme}
-              space={draft.space}
-              seed={draft.seed}
-              userId={user!.id}
-            />
-          ) : (
-            <CharacterPreview member={member} />
-          )}
-          <div className="preview-states" aria-label="预览角色状态">
-            {(Object.keys(memberLabels) as Member['status'][]).map((s) => (
-              <button
-                type="button"
-                key={s}
-                aria-pressed={status === s}
-                onClick={() => setStatus(s)}
-              >
-                {memberLabels[s]}
-              </button>
-            ))}
-          </div>
-          <div className="personal-preview-caption">
-            <span>
-              {tab === 'space' ? '8 个固定座位 · 留给你和学习搭子' : '3D 虚拟形象 · 与账号头像独立'}
+    <AssetsContext.Provider value={owned}>
+      <div className="personal-page">
+        <div className="personal-heading">
+          <div>
+            <span className="eyebrow">
+              {onboarding ? 'MAKE YOURSELF AT HOME' : 'A LITTLE PLACE OF YOUR OWN'}
             </span>
-            <span>预览动作，不影响正在进行的共学</span>
+            <h1>{onboarding ? '先选一份，属于你的安静。' : '我的个人空间'}</h1>
+            <p>
+              {onboarding
+                ? '选个形象、一处风景就好。也可以直接开始，之后慢慢布置。'
+                : '把喜欢的样子留下来。下一次，邀请朋友来这里一起学习。'}
+            </p>
           </div>
-        </section>
-        <aside className="personal-editor">
-          <div className="personal-tabs" role="tablist" aria-label="个人空间编辑">
-            <button
-              role="tab"
-              aria-selected={tab === 'space'}
-              aria-controls="personal-editor-body"
-              onClick={() => setTab('space')}
-            >
-              自习室
-            </button>
-            <button
-              role="tab"
-              aria-selected={tab === 'character'}
-              aria-controls="personal-editor-body"
-              onClick={() => setTab('character')}
-            >
-              虚拟形象
-            </button>
-          </div>
-          <fieldset className="editor-fields" disabled={busy} id="personal-editor-body">
-            {tab === 'character' ? (
-              <>
-                <fieldset className="asset-field">
-                  <legend>基础搭配</legend>
-                  <div className="preset-options">
-                    {presets.map((p) => (
-                      <button
-                        type="button"
-                        key={p.name}
-                        onClick={() => {
-                          setDraft((d) => (d ? { ...d, character: p.character } : d));
-                          setNotice('');
-                        }}
-                      >
-                        <span>{p.name}</span>
-                        <small>一键试穿 ↗</small>
-                      </button>
-                    ))}
-                  </div>
-                </fieldset>
-                {(!onboarding
-                  ? (['skin', 'hair', 'hairColor', 'outfit', 'accessory'] as const)
-                  : (['outfit', 'accessory'] as const)
-                ).map((key) => (
+          <Link className="free-tag" to="/growth">
+            更多装扮 · 预览与兑换 →
+          </Link>
+        </div>
+        {error ? <Notice>{error} 当前编辑内容已保留。</Notice> : null}
+        {notice ? <Notice tone="success">{notice}</Notice> : null}
+        <div className="personal-workbench">
+          <section className="personal-preview-panel">
+            <div className="personal-preview-heading">
+              <div>
+                <span className="eyebrow">LIVE PREVIEW</span>
+                <h2>{tab === 'space' ? `${user!.nickname}的自习室` : '每次入座，都是你'}</h2>
+              </div>
+              <span className="save-state">{dirty ? '● 尚未保存' : '✓ 已长期保存'}</span>
+            </div>
+            {tab === 'space' ? (
+              <StudySpace
+                members={members}
+                phase={
+                  status === 'FOCUSING'
+                    ? 'FOCUS'
+                    : status === 'BREAKING'
+                      ? 'BREAK'
+                      : status === 'ENDED'
+                        ? 'ENDED'
+                        : 'LOBBY'
+                }
+                theme={draft.space.theme}
+                space={draft.space}
+                seed={draft.seed}
+                userId={user!.id}
+              />
+            ) : (
+              <CharacterPreview member={member} />
+            )}
+            <div className="preview-states" aria-label="预览角色状态">
+              {(Object.keys(memberLabels) as Member['status'][]).map((s) => (
+                <button
+                  type="button"
+                  key={s}
+                  aria-pressed={status === s}
+                  onClick={() => setStatus(s)}
+                >
+                  {memberLabels[s]}
+                </button>
+              ))}
+            </div>
+            <div className="personal-preview-caption">
+              <span>
+                {tab === 'space'
+                  ? '8 个固定座位 · 留给你和学习搭子'
+                  : '3D 虚拟形象 · 与账号头像独立'}
+              </span>
+              <span>预览动作，不影响正在进行的共学</span>
+            </div>
+          </section>
+          <aside className="personal-editor">
+            <div className="personal-tabs" role="tablist" aria-label="个人空间编辑">
+              <button
+                role="tab"
+                aria-selected={tab === 'space'}
+                aria-controls="personal-editor-body"
+                onClick={() => setTab('space')}
+              >
+                自习室
+              </button>
+              <button
+                role="tab"
+                aria-selected={tab === 'character'}
+                aria-controls="personal-editor-body"
+                onClick={() => setTab('character')}
+              >
+                虚拟形象
+              </button>
+            </div>
+            <fieldset className="editor-fields" disabled={busy} id="personal-editor-body">
+              {tab === 'character' ? (
+                <>
+                  <fieldset className="asset-field">
+                    <legend>基础搭配</legend>
+                    <div className="preset-options">
+                      {presets.map((p) => (
+                        <button
+                          type="button"
+                          key={p.name}
+                          disabled={Object.values(p.character).some(
+                            (v) => typeof v === 'string' && !owned.has(v),
+                          )}
+                          onClick={() => {
+                            setDraft((d) => (d ? { ...d, character: p.character } : d));
+                            setNotice('');
+                          }}
+                        >
+                          <span>{p.name}</span>
+                          <small>一键试穿 ↗</small>
+                        </button>
+                      ))}
+                    </div>
+                  </fieldset>
+                  {(!onboarding
+                    ? ([
+                        'skin',
+                        'hair',
+                        'hairColor',
+                        'outfit',
+                        'accessory',
+                        'motion',
+                        'expression',
+                      ] as const)
+                    : (['outfit', 'accessory'] as const)
+                  ).map((key) => (
+                    <Choices
+                      key={key}
+                      category={key}
+                      label={
+                        {
+                          skin: '肤色',
+                          hair: '发型',
+                          hairColor: '发色',
+                          outfit: '服装配色',
+                          accessory: '配饰',
+                          motion: '休息动作',
+                          expression: '互动表现',
+                        }[key]
+                      }
+                      value={draft.character[key]}
+                      onChange={(v) => changeCharacter(key, v)}
+                    />
+                  ))}
+                  <p className="editor-note">
+                    想换账号头像？点击顶部昵称，在个人资料中选择默认头像或上传图片。
+                  </p>
+                </>
+              ) : (
+                <>
+                  <fieldset className="asset-field">
+                    <legend>空间风格</legend>
+                    <div className="personal-theme-options">
+                      {(['library', 'rain', 'night'] as const).map((t) => (
+                        <button
+                          key={t}
+                          type="button"
+                          aria-pressed={draft.space.theme === t}
+                          data-theme={t}
+                          onClick={() => {
+                            setDraft((d) =>
+                              d
+                                ? {
+                                    ...d,
+                                    space: {
+                                      ...d.space,
+                                      theme: t,
+                                      light:
+                                        t === 'night' && owned.has('light.warm')
+                                          ? 'light.warm'
+                                          : 'light.day',
+                                      sound: themes[t].sound as SpaceConfig['sound'],
+                                    },
+                                  }
+                                : d,
+                            );
+                            setNotice('');
+                          }}
+                        >
+                          <i aria-hidden="true" />
+                          <span>{themes[t].name}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </fieldset>
                   <Choices
-                    key={key}
-                    category={key}
-                    label={
-                      {
-                        skin: '肤色',
-                        hair: '发型',
-                        hairColor: '发色',
-                        outfit: '服装配色',
-                        accessory: '配饰',
-                      }[key]
-                    }
-                    value={draft.character[key]}
-                    onChange={(v) => changeCharacter(key, v)}
+                    category="room"
+                    label="基础房型"
+                    value={draft.space.room}
+                    onChange={(v) => changeSpace('room', v)}
                   />
-                ))}
-                <p className="editor-note">
-                  想换账号头像？点击顶部昵称，在个人资料中选择默认头像或上传图片。
-                </p>
-              </>
+                  {!onboarding ? (
+                    <>
+                      <Choices
+                        category="desk"
+                        label="桌子"
+                        value={draft.space.desk}
+                        onChange={(v) => changeSpace('desk', v)}
+                      />
+                      <Choices
+                        category="chair"
+                        label="椅子"
+                        value={draft.space.chair}
+                        onChange={(v) => changeSpace('chair', v)}
+                      />
+                      <details className="slot-details" open>
+                        <summary>
+                          摆放槽位 <small>预设位置，座位始终可用</small>
+                        </summary>
+                        {(['desktop', 'wall', 'window', 'rug'] as const).map((key) => (
+                          <Choices
+                            key={key}
+                            category={key}
+                            label={
+                              { desktop: '桌面', wall: '墙面', window: '窗边', rug: '地毯区' }[key]
+                            }
+                            value={draft.space.slots[key]}
+                            onChange={(v) => changeSlot(key, v)}
+                          />
+                        ))}
+                      </details>
+                      <Choices
+                        category="light"
+                        label="灯光"
+                        value={draft.space.light}
+                        onChange={(v) => changeSpace('light', v)}
+                      />
+                      <label>
+                        推荐环境音
+                        <select
+                          value={draft.space.sound}
+                          onChange={(e) => changeSpace('sound', e.target.value)}
+                        >
+                          <option value="birds">林间鸟鸣</option>
+                          <option value="rain">细雨</option>
+                          <option value="fire">炉火</option>
+                          <option value="stream" disabled={!owned.has('sound.stream')}>
+                            溪流{!owned.has('sound.stream') ? ' · 待获取' : ''}
+                          </option>
+                        </select>
+                      </label>
+                    </>
+                  ) : null}
+                  <p className="editor-note">
+                    保存后用于下一次共学。已经开始接待的房间会保留原布置，推荐声音由每个人自行播放。
+                  </p>
+                </>
+              )}
+            </fieldset>
+            {onboarding ? (
+              <button
+                className="button secondary full"
+                onClick={() => setTab(tab === 'space' ? 'character' : 'space')}
+              >
+                {tab === 'character' ? '下一步：看看空间' : '返回选择形象'}
+              </button>
+            ) : null}
+          </aside>
+        </div>
+        <div className="personal-savebar">
+          <div>
+            <strong>
+              {onboarding
+                ? '随时可以回来修改'
+                : dirty
+                  ? '喜欢的话，就留下这套搭配'
+                  : '你的形象与自习室已就位'}
+            </strong>
+            <span>角色随你进入不同房间 · 个人空间长期保留</span>
+          </div>
+          <div className="personal-save-actions">
+            {onboarding ? (
+              <button className="text-button" disabled={busy} onClick={() => void save(true)}>
+                跳过，直接开始
+              </button>
             ) : (
               <>
-                <fieldset className="asset-field">
-                  <legend>空间风格</legend>
-                  <div className="personal-theme-options">
-                    {(['library', 'rain', 'night'] as const).map((t) => (
-                      <button
-                        key={t}
-                        type="button"
-                        aria-pressed={draft.space.theme === t}
-                        data-theme={t}
-                        onClick={() => {
-                          setDraft((d) =>
-                            d
-                              ? {
-                                  ...d,
-                                  space: {
-                                    ...d.space,
-                                    theme: t,
-                                    light: t === 'night' ? 'light.warm' : 'light.day',
-                                    sound: themes[t].sound as SpaceConfig['sound'],
-                                  },
-                                }
-                              : d,
-                          );
-                          setNotice('');
-                        }}
-                      >
-                        <i aria-hidden="true" />
-                        <span>{themes[t].name}</span>
-                      </button>
-                    ))}
-                  </div>
-                </fieldset>
-                <Choices
-                  category="room"
-                  label="基础房型"
-                  value={draft.space.room}
-                  onChange={(v) => changeSpace('room', v)}
-                />
-                {!onboarding ? (
-                  <>
-                    <Choices
-                      category="desk"
-                      label="桌子"
-                      value={draft.space.desk}
-                      onChange={(v) => changeSpace('desk', v)}
-                    />
-                    <Choices
-                      category="chair"
-                      label="椅子"
-                      value={draft.space.chair}
-                      onChange={(v) => changeSpace('chair', v)}
-                    />
-                    <details className="slot-details" open>
-                      <summary>
-                        摆放槽位 <small>预设位置，座位始终可用</small>
-                      </summary>
-                      {(['desktop', 'wall', 'window', 'rug'] as const).map((key) => (
-                        <Choices
-                          key={key}
-                          category={key}
-                          label={
-                            { desktop: '桌面', wall: '墙面', window: '窗边', rug: '地毯区' }[key]
+                <button
+                  className="text-button"
+                  disabled={busy}
+                  onClick={() => {
+                    setDraft((d) =>
+                      d
+                        ? {
+                            ...d,
+                            character: structuredClone(DEFAULT_CHARACTER),
+                            space: structuredClone(DEFAULT_SPACE),
                           }
-                          value={draft.space.slots[key]}
-                          onChange={(v) => changeSlot(key, v)}
-                        />
-                      ))}
-                    </details>
-                    <Choices
-                      category="light"
-                      label="灯光"
-                      value={draft.space.light}
-                      onChange={(v) => changeSpace('light', v)}
-                    />
-                    <label>
-                      推荐环境音
-                      <select
-                        value={draft.space.sound}
-                        onChange={(e) => changeSpace('sound', e.target.value)}
-                      >
-                        <option value="birds">林间鸟鸣</option>
-                        <option value="rain">细雨</option>
-                        <option value="fire">炉火</option>
-                        <option value="stream">溪流</option>
-                      </select>
-                    </label>
-                  </>
-                ) : null}
-                <p className="editor-note">
-                  保存后用于下一次共学。已经开始接待的房间会保留原布置，推荐声音由每个人自行播放。
-                </p>
+                        : d,
+                    );
+                    setNotice('已恢复默认预览，保存后生效。');
+                  }}
+                >
+                  恢复默认
+                </button>
+                <button
+                  className="button secondary"
+                  disabled={busy || !dirty}
+                  onClick={() => {
+                    setDraft(saved);
+                    setError('');
+                    setNotice('已取消编辑，恢复到最近保存的搭配。');
+                  }}
+                >
+                  取消编辑
+                </button>
               </>
             )}
-          </fieldset>
-          {onboarding ? (
             <button
-              className="button secondary full"
-              onClick={() => setTab(tab === 'space' ? 'character' : 'space')}
+              className="button primary"
+              disabled={busy || (!dirty && !onboarding)}
+              onClick={() => void save()}
             >
-              {tab === 'character' ? '下一步：看看空间' : '返回选择形象'}
+              {busy ? '正在保存…' : onboarding ? '保存并开始学习 ↗' : '保存搭配'}
             </button>
-          ) : null}
-        </aside>
-      </div>
-      <div className="personal-savebar">
-        <div>
-          <strong>
-            {onboarding
-              ? '随时可以回来修改'
-              : dirty
-                ? '喜欢的话，就留下这套搭配'
-                : '你的形象与自习室已就位'}
-          </strong>
-          <span>角色随你进入不同房间 · 个人空间长期保留</span>
+          </div>
         </div>
-        <div className="personal-save-actions">
-          {onboarding ? (
-            <button className="text-button" disabled={busy} onClick={() => void save(true)}>
-              跳过，直接开始
-            </button>
-          ) : (
-            <>
-              <button
-                className="text-button"
-                disabled={busy}
-                onClick={() => {
-                  setDraft((d) =>
-                    d
-                      ? {
-                          ...d,
-                          character: structuredClone(DEFAULT_CHARACTER),
-                          space: structuredClone(DEFAULT_SPACE),
-                        }
-                      : d,
-                  );
-                  setNotice('已恢复默认预览，保存后生效。');
-                }}
-              >
-                恢复默认
-              </button>
-              <button
-                className="button secondary"
-                disabled={busy || !dirty}
-                onClick={() => {
-                  setDraft(saved);
-                  setError('');
-                  setNotice('已取消编辑，恢复到最近保存的搭配。');
-                }}
-              >
-                取消编辑
-              </button>
-            </>
-          )}
+        {error ? (
           <button
-            className="button primary"
-            disabled={busy || (!dirty && !onboarding)}
-            onClick={() => void save()}
+            className="text-button"
+            disabled={busy}
+            onClick={() => {
+              if (window.confirm('载入服务器上已保存的版本会替换当前草稿，继续？')) void load();
+            }}
           >
-            {busy ? '正在保存…' : onboarding ? '保存并开始学习 ↗' : '保存搭配'}
+            载入已保存版本
           </button>
-        </div>
+        ) : null}
+        {!onboarding ? (
+          <>
+            <AmbientAudio recommended={draft.space.sound} />
+            <Link to="/#room-entry" className="personal-host-link">
+              用已保存的空间发起共学 →
+            </Link>
+          </>
+        ) : null}
       </div>
-      {error ? (
-        <button
-          className="text-button"
-          disabled={busy}
-          onClick={() => {
-            if (window.confirm('载入服务器上已保存的版本会替换当前草稿，继续？')) void load();
-          }}
-        >
-          载入已保存版本
-        </button>
-      ) : null}
-      {!onboarding ? (
-        <>
-          <AmbientAudio recommended={draft.space.sound} />
-          <Link to="/#room-entry" className="personal-host-link">
-            用已保存的空间发起共学 →
-          </Link>
-        </>
-      ) : null}
-    </div>
+    </AssetsContext.Provider>
   );
 }

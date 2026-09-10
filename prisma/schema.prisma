@@ -74,6 +74,7 @@ model Room {
   @@index([visibility, createdAt])
 }
 model StudySession {
+  rewardRules String?
   id           String @id @default(cuid())
   phase        Phase @default(LOBBY)
   roundNo      Int @default(0)
@@ -147,6 +148,9 @@ model ChatMessage {
   @@index([createdAt])
 }
 model StudyRecord {
+  rewardState String @default("LEGACY")
+  rewardFacts String?
+  settledAt DateTime?
   id              String @id @default(cuid())
   sessionId       String
   session         StudySession @relation(fields: [sessionId], references: [id])
@@ -211,4 +215,47 @@ model PersonalSpace {
   config String
   revision Int @default(1)
   updatedAt DateTime @updatedAt
+}
+
+model GrowthAccount {
+  userId String @id
+  xp Int @default(0)
+  coins Int @default(0)
+  level Int @default(1)
+}
+model GrowthItem {
+  id String @id
+  price Int
+  minLevel Int
+  status String @default("ACTIVE")
+}
+model OwnedAsset {
+  userId String
+  assetId String
+  source String
+  createdAt DateTime @default(now())
+  @@id([userId, assetId])
+}
+model GrowthLedger {
+  id String @id @default(cuid())
+  key String @unique
+  userId String
+  source String
+  recordId String? @unique
+  assetId String?
+  ruleVersion Int
+  xp Int
+  coins Int
+  xpAfter Int
+  coinsAfter Int
+  rewardDay String?
+  goalBonus Boolean @default(false)
+  togetherBonus Boolean @default(false)
+  reason String
+  createdAt DateTime @default(now())
+  @@index([userId, createdAt])
+}
+model GrowthSettings {
+  id String @id
+  rules String
 }
