@@ -152,6 +152,7 @@ export function createRealtime(server: HttpServer) {
     const commands: RoomCommand[] = [
       'room:join',
       'room:sync',
+      'member:seat',
       'member:ready',
       'member:afk',
       'member:leave',
@@ -277,7 +278,9 @@ export function createRealtime(server: HttpServer) {
                 message = await sendChat(auth.userId, input.roomId, requestId, input.payload);
               } else {
                 const payload =
-                  type === 'member:ready'
+                  type === 'member:seat'
+                    ? z.object({ seatIndex: z.number().int().min(0).max(7) }).strict().parse(input.payload)
+                    : type === 'member:ready'
                     ? z.object({ ready: z.boolean() }).parse(input.payload)
                     : type === 'member:afk'
                       ? z.object({ afk: z.boolean() }).parse(input.payload)

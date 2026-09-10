@@ -13,7 +13,7 @@ import {
 } from '@focusspace/shared';
 import { useAuth } from '../auth';
 import { api, errorMessage } from '../api';
-import { Notice } from '../components';
+import { Modal, Notice } from '../components';
 import { StudySpace } from '../features/space/StudySpace';
 import { CharacterPreview } from '../features/space/CharacterPreview';
 import { memberLabels } from '../features/space/memberPresentation';
@@ -94,7 +94,8 @@ export function PersonalSpacePage() {
   const [status, setStatus] = useState<Member['status']>('JOINED');
   const [error, setError] = useState(''),
     [notice, setNotice] = useState(''),
-    [busy, setBusy] = useState(false);
+    [busy, setBusy] = useState(false),
+    [pendingExit, setPendingExit] = useState('');
   const dirty = !!draft && JSON.stringify(draft) !== JSON.stringify(saved);
   async function load() {
     try {
@@ -123,6 +124,28 @@ export function PersonalSpacePage() {
     window.addEventListener('beforeunload', guard);
     return () => window.removeEventListener('beforeunload', guard);
   }, [dirty]);
+  useEffect(() => {
+    if (!dirty) return;
+    const intercept = (event: MouseEvent) => {
+      if (
+        event.defaultPrevented ||
+        event.button !== 0 ||
+        event.metaKey ||
+        event.ctrlKey ||
+        event.shiftKey ||
+        event.altKey
+      )
+        return;
+      const target = event.target instanceof Element ? event.target.closest('a[href]') : null;
+      if (!(target instanceof HTMLAnchorElement) || target.target === '_blank') return;
+      const url = new URL(target.href, window.location.href);
+      if (url.origin !== window.location.origin) return;
+      event.preventDefault();
+      setPendingExit(url.pathname + url.search + url.hash);
+    };
+    document.addEventListener('click', intercept, true);
+    return () => document.removeEventListener('click', intercept, true);
+  }, [dirty]);
   function changeCharacter(key: keyof CharacterConfig, value: string) {
     setDraft((d) => (d ? { ...d, character: { ...d.character, [key]: value } } : d));
     setNotice('');
@@ -138,7 +161,7 @@ export function PersonalSpacePage() {
     setNotice('');
   }
   async function save(skip = false) {
-    if (!draft || !saved || busy) return;
+    if (!draft || !saved || busy) return false;
     setBusy(true);
     setError('');
     setNotice('');
@@ -161,8 +184,10 @@ export function PersonalSpacePage() {
         const next = params.get('next');
         navigate(next && /^\/join\/[A-HJ-NP-Z2-9]{6}$/.test(next) ? next : '/');
       }
+      return true;
     } catch (e) {
       setError(errorMessage(e));
+      return false;
     } finally {
       setBusy(false);
     }
@@ -222,7 +247,7 @@ export function PersonalSpacePage() {
             </p>
           </div>
           <Link className="free-tag" to="/growth">
-            更多装扮 · 预览与兑换 →
+            兑换更多装扮 →
           </Link>
         </div>
         {error ? <Notice>{error} 当前编辑内容已保留。</Notice> : null}
@@ -267,14 +292,6 @@ export function PersonalSpacePage() {
                   {memberLabels[s]}
                 </button>
               ))}
-            </div>
-            <div className="personal-preview-caption">
-              <span>
-                {tab === 'space'
-                  ? '8 个固定座位 · 留给你和学习搭子'
-                  : '3D 虚拟形象 · 与账号头像独立'}
-              </span>
-              <span>预览动作，不影响正在进行的共学</span>
             </div>
           </section>
           <aside className="personal-editor">
@@ -541,6 +558,42 @@ export function PersonalSpacePage() {
               用已保存的空间发起共学 →
             </Link>
           </>
+        ) : null}
+        {pendingExit ? (
+          <Modal className="info-dialog" onCancel={() => setPendingExit('')}>
+            <h2>尚未保存修改</h2>
+            <p>保存当前搭配后离开，或放弃这次修改。</p>
+            <div className="dialog-actions">
+              <button className="text-button" onClick={() => setPendingExit('')}>
+                继续编辑
+              </button>
+              <button
+                className="button secondary"
+                onClick={() => {
+                  const target = pendingExit;
+                  setPendingExit('');
+                  navigate(target);
+                }}
+              >
+                放弃修改并离开
+              </button>
+              <button
+                className="button primary"
+                disabled={busy}
+                onClick={() => {
+                  const target = pendingExit;
+                  void save().then((savedSuccessfully) => {
+                    if (savedSuccessfully && target) {
+                      setPendingExit('');
+                      navigate(target);
+                    }
+                  });
+                }}
+              >
+                {busy ? '正在保存…' : '保存并离开'}
+              </button>
+            </div>
+          </Modal>
         ) : null}
       </div>
     </AssetsContext.Provider>

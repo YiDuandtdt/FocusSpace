@@ -102,7 +102,7 @@ export function RoomPage() {
     <div
       ref={immersion.root}
       data-theme={data.room.theme}
-      className={`room-page phase-${data.session.phase} ${immersion.active ? 'focus-view' : ''} ${immersion.reduced ? 'reduce-motion' : ''} ${showChat ? 'show-focus-chat' : ''}`}
+      className={`room-page phase-${data.session.phase} ${immersion.active ? 'focus-view' : ''} ${showChat ? 'show-focus-chat' : ''}`}
     >
       <div className="room-breadcrumb">
         <Link to="/">我的空间</Link>
@@ -139,8 +139,9 @@ export function RoomPage() {
                   : '这一轮辛苦了，放松一下。'}
           </p>
         </div>
-        <button
-          className="invite-code"
+        <div className="room-invite-actions">
+          <button
+            className="invite-code"
           onClick={() => {
             setActionError('');
             setSuccess('');
@@ -158,27 +159,28 @@ export function RoomPage() {
           <small>
             {ended ? '房间已关闭' : '分享给朋友，一起入座'} <span aria-hidden="true">↗</span>
           </small>
-        </button>
+          </button>
+          {!ended ? (
+            <button
+              className="text-button invitation-link"
+              onClick={() =>
+                void copyText(window.location.origin + '/join/' + data.room.code)
+                  .then(() => {
+                    setActionError('');
+                    setSuccess('邀请链接已复制');
+                  })
+                  .catch(() =>
+                    setActionError(
+                      '请复制邀请链接：' + window.location.origin + '/join/' + data.room.code,
+                    ),
+                  )
+              }
+            >
+              复制邀请链接 ↗
+            </button>
+          ) : null}
+        </div>
       </div>
-      {!ended ? (
-        <button
-          className="text-button invitation-link"
-          onClick={() =>
-            void copyText(window.location.origin + '/join/' + data.room.code)
-              .then(() => {
-                setActionError('');
-                setSuccess('邀请链接已复制');
-              })
-              .catch(() =>
-                setActionError(
-                  '请复制邀请链接：' + window.location.origin + '/join/' + data.room.code,
-                ),
-              )
-          }
-        >
-          复制邀请链接 ↗
-        </button>
-      ) : null}
       {actionError ? <Notice>{actionError}</Notice> : null}
       {success ? <Notice tone="success">{success}</Notice> : null}
       {data.summary ? <SummaryPanel summary={data.summary} /> : null}
@@ -197,13 +199,6 @@ export function RoomPage() {
             onClick={() => void immersion.toggleFullscreen()}
           >
             {immersion.fullscreen ? '退出全屏' : '全屏专注'}
-          </button>
-          <button
-            className="text-button"
-            aria-pressed={immersion.reduced}
-            onClick={immersion.toggleReduced}
-          >
-            {immersion.reduced ? '动态已减少' : '减少动态'}
           </button>
           {immersion.active ? (
             <button
@@ -266,12 +261,6 @@ export function RoomPage() {
           </div>
         </section>
       ) : null}
-      {data.room.spaceSnapshot ? (
-        <div className="room-space-origin">
-          在 {data.room.spaceSnapshot.ownerName} 的个人空间共学 ·
-          本次布置已固定，转交主持不改变空间归属
-        </div>
-      ) : null}
       <nav className="room-shortcuts" aria-label="房间快捷入口">
         <a href="#room-space">空间与计时</a>
         <a href="#room-tasks">我的任务</a>
@@ -308,7 +297,8 @@ export function RoomPage() {
               theme={data.room.theme}
               space={data.room.spaceSnapshot?.config}
               seed={data.room.spaceSnapshot?.seed}
-              reducedMotion={immersion.reduced}
+              canSelectSeat={lobby && writable}
+              onSeatSelect={(seatIndex) => void perform('member:seat', { seatIndex })}
               completedUsers={lights
                 .filter((light) => light.symbol === '✓')
                 .map((light) => light.userId)}
@@ -322,15 +312,6 @@ export function RoomPage() {
               ))}
             </div>
             {!lobby && !ended ? <Encouragement disabled={!writable} command={command} /> : null}
-            {lobby && data.myPermissions.isOwner ? (
-              <p className="muted" role="status">
-                {status !== 'online'
-                  ? '等待实时连接恢复'
-                  : busy
-                    ? '正在保存操作…'
-                    : (data.myPermissions.startDisabledReason ?? '成员已准备，可以开始共学。')}
-              </p>
-            ) : null}
             {!ended ? (
               <AmbientAudio
                 key={`audio-${roomId}`}
@@ -417,16 +398,6 @@ export function RoomPage() {
                 {data.members.length}/{data.room.capacity}
               </span>
             </div>
-            <p className="muted">
-              房间总体任务 {data.feedback.roomTasksDone}/{data.feedback.roomTasksTotal} ·{' '}
-              {data.feedback.roomTasksTotal
-                ? Math.round((data.feedback.roomTasksDone / data.feedback.roomTasksTotal) * 100) +
-                  '%'
-                : '未设置任务'}
-              <br />
-              共同专注 {Math.floor(data.feedback.roomFocusSeconds / 60)} 分{' '}
-              {data.feedback.roomFocusSeconds % 60} 秒 · 至少两人同时专注
-            </p>
             <ul className="member-list">
               {data.members.map((member) => (
                 <li key={member.userId}>

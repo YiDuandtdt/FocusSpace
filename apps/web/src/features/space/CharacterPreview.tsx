@@ -27,7 +27,12 @@ export function CharacterPreview({ member }: { member: Member }) {
     };
   }, []);
   return (
-    <div className="character-preview" ref={host} aria-label="个人虚拟形象实时预览">
+    <div
+      className="character-preview"
+      ref={host}
+      aria-label="个人虚拟形象实时预览，可拖动旋转并滚动缩放"
+      tabIndex={0}
+    >
       {failed ? <p role="status">3D 预览暂不可用，仍可选择并保存搭配。</p> : null}
     </div>
   );

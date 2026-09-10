@@ -5,7 +5,6 @@ import { readPreferences, savePreferences } from '../../preferences';
 export function useImmersion(userId: string, ended: boolean) {
   const root = useRef<HTMLDivElement>(null);
   const [focus, setFocus] = useState(() => readPreferences(userId).focusView);
-  const [reduced, setReduced] = useState(() => readPreferences(userId).reducedMotion);
   const [fullscreen, setFullscreen] = useState(false);
   const [notice, setNotice] = useState('');
   const active = focus && !ended;
@@ -91,22 +90,12 @@ export function useImmersion(userId: string, ended: boolean) {
       setNotice('未能进入全屏，仍可使用普通专注视图。');
     }
   }
-  function toggleReduced() {
-    setReduced(!reduced);
-    setNotice(
-      savePreferences(userId, { reducedMotion: !reduced })
-        ? ''
-        : '动态偏好已调整，但浏览器未允许保存。',
-    );
-  }
   return {
     root,
     active,
-    reduced,
     fullscreen,
     notice,
     toggleFocus,
     toggleFullscreen,
-    toggleReduced,
   };
 }

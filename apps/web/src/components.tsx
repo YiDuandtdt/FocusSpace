@@ -112,9 +112,7 @@ export function Shell({ children }: { children: ReactNode }) {
       </a>
       <header className="header">
         <Link to="/" className="brand" aria-label="FocusSpace 首页">
-          <span className="brand-mark">
-            f<span />
-          </span>
+          <img className="brand-mark" src="/favicon.svg" alt="" />
           FocusSpace<span className="brand-note">共同在场</span>
         </Link>
         <nav className="header-actions" aria-label="主导航">

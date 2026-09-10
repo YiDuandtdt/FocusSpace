@@ -84,6 +84,7 @@ export function TaskPanel({
   const [title, setTitle] = useDraft(draftKey, '');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [showRules, setShowRules] = useState(false);
   const done = tasks.filter((t) => t.completed).length;
   async function run(type: RoomCommand, payload: unknown) {
     if (busy || disabled || ended) return false;
@@ -107,18 +108,29 @@ export function TaskPanel({
     <section className="panel task-panel">
       <div className="panel-heading">
         <h2>我的任务</h2>
-        <span>{tasks.length ? `${done} / ${tasks.length}` : '未设置任务'}</span>
+        <div className="panel-heading-tools">
+          <span>{tasks.length ? `${done} / ${tasks.length}` : '未设置任务'}</span>
+          <button
+            type="button"
+            className="icon-help"
+            aria-label="查看任务完成统计规则"
+            onClick={() => setShowRules(true)}
+          >
+            ?
+          </button>
+        </div>
       </div>
-      <p className="muted">
-        先写下一个小目标。任务标题默认仅自己可见。
-        {ended ? '本次任务已冻结。' : ''}
-      </p>
-      <details className="muted task-rules">
-        <summary>完成统计如何计算？</summary>
-        <p>
-          整场按未删除任务的当前状态计数：取消完成扣除完成数，删除同时移除总数和完成数。本轮只计首次完成发生在本轮、且当前仍完成的任务；重复勾选不新增次数，跨轮重复完成不算新成果。休息期间完成归当前轮，大厅完成不归专注轮。结算后冻结。
-        </p>
-      </details>
+      {showRules ? (
+        <Modal className="info-dialog" onCancel={() => setShowRules(false)}>
+          <h2>任务完成统计</h2>
+          <p>
+            整场按未删除任务的当前状态计数：取消完成扣除完成数，删除同时移除总数和完成数。本轮只计首次完成发生在本轮、且当前仍完成的任务；重复勾选不新增次数，跨轮重复完成不算新成果。休息期间完成归当前轮，大厅完成不归专注轮。结算后冻结。
+          </p>
+          <button className="button primary" onClick={() => setShowRules(false)}>
+            知道了
+          </button>
+        </Modal>
+      ) : null}
       <progress aria-label="我的任务完成进度" max={tasks.length || 1} value={done} />
       <ul className="task-list">
         {tasks.map((task) => (
@@ -132,7 +144,7 @@ export function TaskPanel({
         ))}
       </ul>
       {!tasks.length ? (
-        <p className="muted">给这次共学写下一个小目标。没有任务也可以开始。</p>
+        <p className="muted">写下一个小目标</p>
       ) : null}
       {!ended ? (
         <form className="task-create" onSubmit={create}>

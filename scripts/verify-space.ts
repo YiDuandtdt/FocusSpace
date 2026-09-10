@@ -222,6 +222,27 @@ try {
   await expect(pageA.locator('.scene-host canvas')).toBeVisible({ timeout: 15000 });
   await expect(pageB.locator('.scene-host canvas')).toBeVisible({ timeout: 15000 });
   await expect(pageA.locator('.scene-seat-label.is-occupied')).toHaveCount(8);
+  const labelBeforeOrbit = await pageA
+    .locator('.scene-seat-label.is-occupied')
+    .first()
+    .evaluate((label: HTMLElement) => [label.style.left, label.style.top]);
+  const canvasBox = await pageA.locator('.scene-host canvas').boundingBox();
+  assert(canvasBox);
+  await pageA.mouse.move(canvasBox.x + canvasBox.width * 0.55, canvasBox.y + canvasBox.height * 0.5);
+  await pageA.mouse.down();
+  await pageA.mouse.move(canvasBox.x + canvasBox.width * 0.72, canvasBox.y + canvasBox.height * 0.5);
+  await pageA.mouse.up();
+  const labelAfterOrbit = await pageA
+    .locator('.scene-seat-label.is-occupied')
+    .first()
+    .evaluate((label: HTMLElement) => [label.style.left, label.style.top]);
+  assert.notDeepEqual(labelAfterOrbit, labelBeforeOrbit);
+  await pageA.locator('.scene-host canvas').dispatchEvent('wheel', { deltaY: -120 });
+  const labelAfterZoom = await pageA
+    .locator('.scene-seat-label.is-occupied')
+    .first()
+    .evaluate((label: HTMLElement) => [label.style.left, label.style.top]);
+  assert.notDeepEqual(labelAfterZoom, labelAfterOrbit);
   const initial = await seatMap(pageA);
   assert.deepEqual(await seatMap(pageB), initial);
   assert.equal(audioRequests, 0, 'audio defaults off and does not preload');
@@ -368,6 +389,22 @@ try {
   assert.deepEqual(await seatMap(pageB), initial);
   await command(people[3]!, 'member:leave');
   await expect(pageA.locator('.scene-seat-label.is-occupied')).toHaveCount(7);
+  const emptySeat = pageA.getByRole('button', { name: '选择座位 04' });
+  await expect(emptySeat).toBeVisible();
+  await expect(emptySeat).toHaveText('');
+  await emptySeat.click();
+  await expect(pageA.locator('.scene-seat-label[data-seat="3"]')).toHaveAttribute(
+    'data-user-id',
+    owner.id,
+  );
+  const occupiedAck = await people[2]!.socket.timeout(8000).emitWithAck('member:seat', {
+    roomId,
+    payload: { seatIndex: 3 },
+    requestId: crypto.randomUUID(),
+  });
+  assert.equal(occupiedAck.ok, false);
+  assert.equal(occupiedAck.error.code, 'SEAT_TAKEN');
+  await command(owner, 'member:seat', { seatIndex: 0 });
   const replacement = await actor(8);
   await api('/rooms/join', replacement, { code: room.code, requestId: crypto.randomUUID() });
   await command(replacement, 'room:join');
@@ -408,7 +445,7 @@ try {
   await pageA.getByRole('button', { name: '退出全屏', exact: true }).click();
   assert.equal(await pageA.evaluate(() => !!document.fullscreenElement), false);
   await expect(pageA.getByLabel('新任务', { exact: true })).toHaveValue(taskDraft);
-  for (const id of ['fire', 'birds', 'stream', 'rain']) {
+  for (const id of ['fire', 'birds', 'rain']) {
     await pageA.getByLabel('选择环境声').selectOption(id);
     await expect
       .poll(() =>
@@ -423,13 +460,6 @@ try {
   assert.deepEqual(afterView.members, activeState.members);
   assert.deepEqual(afterView.myTasks, activeState.myTasks);
   await screenshot(pageA, 'immersive-desktop.png');
-  await pageA.getByRole('button', { name: '减少动态', exact: true }).click();
-  await pageA.locator('.scene-host').scrollIntoViewIfNeeded();
-  await pageA.waitForTimeout(150);
-  const stillDraws = await pageA.evaluate(() => (window as any).spaceProbe.draws);
-  await pageA.waitForTimeout(250);
-  assert.equal(await pageA.evaluate(() => (window as any).spaceProbe.draws), stillDraws);
-  await pageA.getByRole('button', { name: '动态已减少' }).click();
   await pageA.getByRole('button', { name: '返回完整界面' }).click();
   await pageA.getByRole('button', { name: '暂停环境声' }).click();
   // Browser rejection falls back to ordinary focus view; local choices persist without autoplay.
@@ -475,7 +505,7 @@ try {
   await pageA.waitForTimeout(250);
   assert.equal(await pageA.evaluate(() => (window as any).spaceProbe.draws), drawCount);
   await pageA.evaluate(() => {
-    delete (document as any).hidden;
+    Object.defineProperty(document, 'hidden', { configurable: true, value: false });
     document.dispatchEvent(new Event('visibilitychange'));
   });
   await expect
@@ -537,7 +567,7 @@ try {
   await expect(pageB.getByRole('button', { name: '重试 3D' })).toBeVisible();
   await expect(pageB.getByRole('timer')).toBeVisible();
   await expect(pageB.getByLabel('新任务', { exact: true })).toBeEnabled();
-  await pageB.route('**/audio/rain.mp3', (route) => route.abort());
+  await pageB.route('**/api/users/me/sounds/rain', (route) => route.abort());
   await pageB.getByRole('button', { name: '播放环境声', exact: true }).click();
   await expect(pageB.locator('.audio-error')).toBeVisible();
   await screenshot(pageB, 'fallback-mobile.png');

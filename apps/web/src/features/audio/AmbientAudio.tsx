@@ -118,7 +118,6 @@ export function AmbientAudio({ recommended }: { recommended: string }) {
               </option>
             ))}
           </select>
-          <small>仅自己听见 · 默认关闭 · 循环播放</small>
         </span>
       </label>
       <button
@@ -146,12 +145,6 @@ export function AmbientAudio({ recommended }: { recommended: string }) {
           }}
         />
       </label>
-      <p className="audio-recommendation">
-        此空间适合「{tracks.find((track) => track.id === recommended)?.name}」 · 自由选择{' '}
-        <a href="/audio/SOURCES.md" target="_blank" rel="noreferrer">
-          声音来源与授权 ↗
-        </a>
-      </p>
       {error ? (
         <p className="audio-error" role="status">
           {error}

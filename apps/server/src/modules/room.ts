@@ -466,7 +466,13 @@ export async function mutateMember(
   roomId: string,
   requestId: string,
   type: string,
-  payload: { ready?: boolean; afk?: boolean; focusSeconds?: number; breakSeconds?: number },
+  payload: {
+    ready?: boolean;
+    afk?: boolean;
+    seatIndex?: number;
+    focusSeconds?: number;
+    breakSeconds?: number;
+  },
 ) {
   return db.$transaction((tx) =>
     receipt(tx, userId, requestId, type, { roomId, payload }, async () => {
@@ -488,6 +494,25 @@ export async function mutateMember(
           data: { focusSeconds: payload.focusSeconds, breakSeconds: payload.breakSeconds },
         });
         await tx.roomMember.updateMany({ where: { roomId, leftAt: null }, data: { ready: false } });
+      } else if (type === 'member:seat') {
+        if (room.session.phase !== 'LOBBY')
+          throw new AppError('INVALID_PHASE', '只能在大厅更换座位', 409);
+        if (
+          !Number.isInteger(payload.seatIndex) ||
+          payload.seatIndex! < 0 ||
+          payload.seatIndex! >= room.capacity
+        )
+          throw new AppError('INVALID_SEAT', '请选择房间内的有效座位', 400);
+        const occupied = await tx.roomMember.findFirst({
+          where: { roomId, leftAt: null, seatIndex: payload.seatIndex, id: { not: member.id } },
+          select: { id: true },
+        });
+        if (occupied)
+          throw new AppError('SEAT_TAKEN', '这个座位刚刚被选走，请换一个', 409);
+        await tx.roomMember.update({
+          where: { id: member.id },
+          data: { seatIndex: payload.seatIndex, ready: false },
+        });
       } else {
         if (type === 'member:ready' && room.session.phase !== 'LOBBY')
           throw new AppError('INVALID_PHASE', '只能在大厅设置准备状态', 409);

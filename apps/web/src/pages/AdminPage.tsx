@@ -143,9 +143,6 @@ export function AdminPage() {
       <Link to="/">← 我的空间</Link>
       <span className="eyebrow">FOCUSSPACE ADMIN</span>
       <h1>管理共学空间</h1>
-      <Link className="button secondary" to="/admin/growth">
-        成长、物品与补偿流水 →
-      </Link>
       <p className="muted">
         管理账号、公共入口与有限期消息。私人任务标题保持私有，学习历史仅由共学服务结算。
       </p>
@@ -164,6 +161,9 @@ export function AdminPage() {
             {label}
           </Link>
         ))}
+        <Link className="button secondary" to="/admin/growth">
+          成长与资产
+        </Link>
       </nav>
       <div className="directory-filters">
         {tab !== 'overview' ? (

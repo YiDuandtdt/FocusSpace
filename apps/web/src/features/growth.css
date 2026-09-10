@@ -26,8 +26,9 @@
 }
 .growth-passport {
   display: grid;
-  grid-template-columns: 1fr 1fr 1.3fr;
+  grid-template-columns: 1fr 1fr;
   gap: 28px;
+  position: relative;
 }
 .growth-passport h2 {
   font-size: 40px;
@@ -37,6 +38,18 @@
 .growth-passport > div + div {
   border-left: 1px solid #b4cdc4;
   padding-left: 28px;
+}
+.growth-help {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+}
+.growth-progress-count {
+  display: block;
+  margin-top: 4px;
+  text-align: right;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
 }
 .growth-page progress,
 .reward-feedback progress {
@@ -196,11 +209,6 @@
   }
   .growth-passport {
     grid-template-columns: 1fr 1fr;
-  }
-  .growth-passport > div:last-child {
-    grid-column: 1/-1;
-    border: 0;
-    padding-left: 0;
   }
   .growth-admin .admin-grid {
     grid-template-columns: 1fr;

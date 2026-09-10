@@ -3,7 +3,6 @@ import { Avatar } from '../../components';
 import { memberLabels, memberSymbols, SEATS } from './memberPresentation';
 import type { SceneState, StudyRoomScene } from './StudyRoomScene';
 
-import { readPreferences, savePreferences } from '../../preferences';
 import { themes } from './themes';
 
 export const StudySpace = memo(function StudySpace(props: SceneState) {
@@ -12,8 +11,6 @@ export const StudySpace = memo(function StudySpace(props: SceneState) {
   const latest = useRef(props);
   const [failed, setFailed] = useState(false);
   const [loaded, setLoaded] = useState(false);
-  const [cards, setCards] = useState(() => readPreferences(props.userId ?? '').cards);
-  const [preferenceError, setPreferenceError] = useState('');
   const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
@@ -28,7 +25,6 @@ export const StudySpace = memo(function StudySpace(props: SceneState) {
   }, [props]);
 
   useEffect(() => {
-    if (cards) return;
     let cancelled = false;
     setLoaded(false);
     setFailed(false);
@@ -55,30 +51,12 @@ export const StudySpace = memo(function StudySpace(props: SceneState) {
       scene.current?.dispose();
       scene.current = null;
     };
-  }, [cards, attempt]);
+  }, [attempt]);
 
-  const fallback = cards || failed || !loaded;
+  const fallback = failed;
   return (
     <div className={`study-space ${fallback ? 'show-cards' : ''}`}>
-      {preferenceError ? <p role="status">{preferenceError}</p> : null}
-      <div className="space-view-controls">
-        <div>
-          <span className="eyebrow">THE READING ROOM</span>
-          <strong>{themes[props.theme].name}</strong>
-        </div>
-        <button
-          className="text-button"
-          onClick={() => {
-            setCards(!cards);
-            if (!savePreferences(props.userId ?? '', { cards: !cards }))
-              setPreferenceError('视图已切换，但浏览器未允许保存偏好。');
-          }}
-          aria-pressed={cards}
-        >
-          {cards ? '打开 3D 空间' : '使用座位卡片'}
-        </button>
-      </div>
-      {failed && !cards ? (
+      {failed ? (
         <div className="space-fallback-notice" role="status">
           <span>3D 空间暂不可用，已显示座位卡片。计时、任务和聊天仍可使用。</span>
           <button className="text-button" onClick={() => setAttempt((value) => value + 1)}>
@@ -86,7 +64,7 @@ export const StudySpace = memo(function StudySpace(props: SceneState) {
           </button>
         </div>
       ) : null}
-      {!cards && !failed && !loaded ? (
+      {!failed && !loaded ? (
         <p className="space-loading" role="status">
           正在打开{themes[props.theme].name}…
         </p>
@@ -96,22 +74,33 @@ export const StudySpace = memo(function StudySpace(props: SceneState) {
         className="scene-host"
         aria-label={`${themes[props.theme].name}成员座位`}
         role="group"
-        hidden={fallback}
+        tabIndex={0}
+        hidden={failed}
       />
       {fallback ? (
         <div className="seat-cards" aria-label="成员座位卡片">
           {SEATS.map(({ index }) => {
             const member = props.members.find((item) => item.seatIndex === index);
             return (
-              <div
+              <button
+                type="button"
                 className={`seat-card ${member?.userId === props.userId ? 'is-me' : ''}`}
                 key={index}
                 data-seat={index}
                 data-user-id={member?.userId ?? ''}
                 data-status={member?.status ?? 'EMPTY'}
                 data-completed={props.completedUsers?.includes(member?.userId ?? '') || undefined}
+                aria-label={
+                  member
+                    ? `${member.nickname}，座位 ${String(index + 1).padStart(2, '0')}`
+                    : `选择座位 ${String(index + 1).padStart(2, '0')}`
+                }
+                disabled={!!member || !props.canSelectSeat}
+                onClick={() => props.onSeatSelect?.(index)}
               >
-                <span className="seat-number">座位 {String(index + 1).padStart(2, '0')}</span>
+                {member ? (
+                  <span className="seat-number">座位 {String(index + 1).padStart(2, '0')}</span>
+                ) : null}
                 {member ? (
                   <Avatar
                     small
@@ -124,31 +113,20 @@ export const StudySpace = memo(function StudySpace(props: SceneState) {
                     ＋
                   </span>
                 )}
-                <strong>
-                  {member
-                    ? `${member.nickname}${member.userId === props.userId ? ' · 你' : ''}`
-                    : '等你入座'}
-                </strong>
-                <small>
-                  {member
-                    ? `${memberSymbols[member.status]} ${memberLabels[member.status]}`
-                    : '空座'}
-                  {props.completedUsers?.includes(member?.userId ?? '') ? ' · ✓ 完成任务' : ''}
-                </small>
-              </div>
+                {member ? (
+                  <>
+                    <strong>{`${member.nickname}${member.userId === props.userId ? ' · 你' : ''}`}</strong>
+                    <small>
+                      {`${memberSymbols[member.status]} ${memberLabels[member.status]}`}
+                      {props.completedUsers?.includes(member.userId) ? ' · ✓ 完成任务' : ''}
+                    </small>
+                  </>
+                ) : null}
+              </button>
             );
           })}
         </div>
       ) : null}
-      <p className="space-footnote">
-        {props.phase === 'BREAK'
-          ? '放下笔，伸个懒腰。休息聊天室已开放。'
-          : props.phase === 'FOCUS'
-            ? '灯下各自努力，也有彼此陪伴。'
-            : props.phase === 'ENDED'
-              ? '这张桌子，记得今天的努力。'
-              : '选一个小目标，和同桌一起开始。'}
-      </p>
     </div>
   );
 });

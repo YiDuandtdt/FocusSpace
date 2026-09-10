@@ -252,6 +252,15 @@ try {
     'aria-pressed',
     'true',
   );
+  await page.getByRole('button', { name: '窗边书屋', exact: true }).click();
+  await page.getByRole('link', { name: '兑换更多装扮' }).click();
+  await expect(page.getByRole('heading', { name: '尚未保存修改' })).toBeVisible();
+  await expect(page).toHaveURL(base + '/space');
+  await page.getByRole('button', { name: '继续编辑' }).click();
+  await page.getByRole('link', { name: '兑换更多装扮' }).click();
+  await page.getByRole('button', { name: '放弃修改并离开' }).click();
+  await expect(page).toHaveURL(base + '/growth');
+  await page.goto(`${base}/space`);
   await page.reload();
   await expect(page.getByRole('button', { name: '拱窗小筑', exact: true })).toHaveAttribute(
     'aria-pressed',
@@ -261,6 +270,28 @@ try {
   await shot(page, '02-personal-room.png');
   await page.getByRole('tab', { name: '虚拟形象', exact: true }).click();
   await expect(page.locator('.character-preview canvas')).toBeVisible();
+  const characterCanvas = page.locator('.character-preview canvas');
+  const characterBefore = await characterCanvas.evaluate((canvas: HTMLCanvasElement) =>
+    canvas.toDataURL(),
+  );
+  const characterBox = await characterCanvas.boundingBox();
+  assert(characterBox);
+  await page.mouse.move(
+    characterBox.x + characterBox.width * 0.45,
+    characterBox.y + characterBox.height * 0.5,
+  );
+  await page.mouse.down();
+  await page.mouse.move(
+    characterBox.x + characterBox.width * 0.68,
+    characterBox.y + characterBox.height * 0.5,
+  );
+  await page.mouse.up();
+  await page.waitForTimeout(100);
+  assert.notEqual(
+    await characterCanvas.evaluate((canvas: HTMLCanvasElement) => canvas.toDataURL()),
+    characterBefore,
+  );
+  await characterCanvas.dispatchEvent('wheel', { deltaY: -120 });
   await shot(page, '03-character.png');
   console.log(
     'PASS registration onboarding, editing save/reload, cancel/default preview, retained draft on save failure',

@@ -167,6 +167,11 @@
   width: 100%;
   height: 100%;
   display: block;
+  cursor: grab;
+  touch-action: none;
+}
+.scene-host canvas:active {
+  cursor: grabbing;
 }
 .scene-seat-label {
   position: absolute;
@@ -178,6 +183,9 @@
   background: #f8f7edee;
   border: 1px solid #d1d6c5;
   pointer-events: none;
+  appearance: none;
+  color: inherit;
+  font: inherit;
 }
 .scene-seat-label strong {
   display: block;
@@ -196,9 +204,32 @@
 .scene-seat-label.is-empty {
   background: transparent;
   border-color: transparent;
-  opacity: 0.55;
+  opacity: 0;
+  width: 30px;
+  height: 30px;
+  padding: 0;
 }
-.scene-seat-label.is-empty span { display: none; }
+.scene-seat-label.is-empty.can-select {
+  opacity: 0.72;
+  pointer-events: auto;
+  cursor: pointer;
+  border: 1px dashed #657b6c;
+  border-radius: 50%;
+  background: #f8f7ed99;
+}
+.scene-seat-label.is-empty.can-select::before {
+  content: '';
+  display: block;
+  width: 7px;
+  height: 7px;
+  margin: auto;
+  border-radius: 50%;
+  background: #597466;
+}
+.scene-seat-label.is-empty.can-select:hover {
+  opacity: 1;
+  transform: translate(-50%, -100%) scale(1.08);
+}
 .scene-seat-label.is-me,
 .seat-card.is-me {
   border-color: #718567;
@@ -244,6 +275,9 @@
 .seat-card {
   display: flex;
   align-items: center;
+  appearance: none;
+  color: inherit;
+  font: inherit;
   flex-direction: column;
   gap: 8px;
   padding: 14px 6px;

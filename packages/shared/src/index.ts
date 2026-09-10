@@ -172,6 +172,7 @@ export type RoomCommand =
   | 'room:transfer'
   | 'room:visibility'
   | 'room:theme'
+  | 'member:seat'
   | 'member:ready'
   | 'member:afk'
   | 'member:leave'

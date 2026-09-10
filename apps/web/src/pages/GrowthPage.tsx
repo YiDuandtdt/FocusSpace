@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   DEFAULT_CHARACTER,
@@ -11,7 +11,7 @@ import {
 import { useAuth } from '../auth';
 import { api, errorMessage } from '../api';
 import { createRequestId } from '../requestId';
-import { Notice } from '../components';
+import { Modal, Notice } from '../components';
 import { CharacterPreview } from '../features/space/CharacterPreview';
 import { StudySpace } from '../features/space/StudySpace';
 import { tracks } from '../features/audio/tracks';
@@ -39,16 +39,21 @@ export function GrowthPage() {
     [personal, setPersonal] = useState<PersonalSpace | null>(null),
     [selected, setSelected] = useState('outfit.clay'),
     [slot, setSlot] = useState('all'),
-    [filter, setFilter] = useState('all'),
     [error, setError] = useState(''),
     [notice, setNotice] = useState(''),
-    [busy, setBusy] = useState(false);
+    [busy, setBusy] = useState(false),
+    [showRules, setShowRules] = useState(false);
+  const selectionInitialized = useRef(false);
   async function load() {
     try {
       const [g, p] = await Promise.all([
         api<GrowthView>('/users/me/growth'),
         api<PersonalSpace>('/users/me/space'),
       ]);
+      if (!selectionInitialized.current) {
+        setSelected(g.catalog.find((catalogItem) => !catalogItem.owned)?.id ?? g.catalog[0]?.id ?? '');
+        selectionInitialized.current = true;
+      }
       setData(g);
       setPersonal(p);
       setError('');
@@ -153,53 +158,55 @@ export function GrowthPage() {
       {data ? (
         <>
           <section className="growth-passport">
+            <button
+              type="button"
+              className="icon-help growth-help"
+              aria-label="查看经验与学习币规则"
+              onClick={() => setShowRules(true)}
+            >
+              ?
+            </button>
             <div>
               <span>成长记录</span>
               <h2>Lv.{data.level}</h2>
-              <p>
-                {data.xp} 经验 · 下一等级 {data.next}
-              </p>
               <progress
                 aria-label="等级进度"
                 value={data.xp - data.floor}
                 max={data.next - data.floor}
               />
+              <span className="growth-progress-count">
+                {data.xp} / {data.next}
+              </span>
             </div>
             <div>
               <span>学习币</span>
               <h2>{data.coins}</h2>
-              <p>永久兑换 · 无充值或交易</p>
-            </div>
-            <div>
-              <span>下一步</span>
-              <p>
-                {data.coins < 5
-                  ? `再积累 ${5 - data.coins} 币，兑换第一件 5 币装扮。`
-                  : '挑一件喜欢的装扮，再开启下一次专注。'}
-              </p>
-              <Link to="/#room-entry" className="button secondary">
-                继续学习 / 邀请朋友 →
-              </Link>
             </div>
           </section>
-          <details className="growth-rules">
-            <summary>经验与币如何获得 · 何时到账</summary>
-            <p>
-              每整分钟服务端有效专注 +{data.rules.xpPerMinute} 经验、+{data.rules.coinsPerMinute}{' '}
-              币；完整轮次 +{data.rules.roundXp} 经验、+{data.rules.roundCoins}{' '}
-              币，奖励次数最多为有效专注分钟数 ÷ 25 取整。不到一分钟的部分本场不计奖。
-            </p>
-            <p>
-              开始前设定的目标，在结束前完成且有效学习至少 5 分钟：每日一次 +{data.rules.goalXp}{' '}
-              经验、+{data.rules.goalCoins} 币。与他人有效重叠至少 5 分钟：每日一次 +
-              {data.rules.togetherXp} 经验、+{data.rules.togetherCoins}{' '}
-              币。按结算日（北京时间）各限一次，任务重复勾选不重复奖励。
-            </p>
-            <p>
-              该场共学结束后统一结算到账。提前离开仍保留有效学习，房主接任不影响记录；缺席、暂离或断线不会扣除已获得经验。演示场次和升级前记录不发正式奖励。规则
-              v{data.rules.version}，修改只用于之后新建的房间。
-            </p>
-          </details>
+          {showRules ? (
+            <Modal className="info-dialog" onCancel={() => setShowRules(false)}>
+              <h2>经验与学习币</h2>
+              <p>
+                每整分钟服务端有效专注 +{data.rules.xpPerMinute} 经验、+
+                {data.rules.coinsPerMinute} 币；完整轮次 +{data.rules.roundXp} 经验、+
+                {data.rules.roundCoins} 币，奖励次数最多为有效专注分钟数 ÷ 25
+                取整。不到一分钟的部分本场不计奖。
+              </p>
+              <p>
+                开始前设定的目标，在结束前完成且有效学习至少 5 分钟：每日一次 +
+                {data.rules.goalXp} 经验、+{data.rules.goalCoins} 币。与他人有效重叠至少 5
+                分钟：每日一次 +{data.rules.togetherXp} 经验、+{data.rules.togetherCoins}{' '}
+                币。按结算日（北京时间）各限一次，任务重复勾选不重复奖励。
+              </p>
+              <p>
+                该场共学结束后统一结算到账。提前离开仍保留有效学习，房主接任不影响记录；缺席、暂离或断线不会扣除已获得经验。演示场次和升级前记录不发正式奖励。规则
+                v{data.rules.version}，修改只用于之后新建的房间。
+              </p>
+              <button className="button primary" onClick={() => setShowRules(false)}>
+                知道了
+              </button>
+            </Modal>
+          ) : null}
           {data.pending ? <p role="status">{data.pending} 笔奖励处理中，刷新后重试补发。</p> : null}
           <div className="growth-workbench">
             <section className="growth-shelf">
@@ -215,28 +222,11 @@ export function GrowthPage() {
                     ))}
                   </select>
                 </label>
-                <label>
-                  获取状态
-                  <select value={filter} onChange={(e) => setFilter(e.target.value)}>
-                    <option value="all">全部</option>
-                    <option value="owned">已拥有</option>
-                    <option value="available">可获取</option>
-                    <option value="free">免费</option>
-                  </select>
-                </label>
               </div>
               <div className="growth-items">
                 {data.catalog
                   .filter(
-                    (i) =>
-                      (slot === 'all' || i.slot === slot) &&
-                      (filter === 'all' ||
-                        (filter === 'owned' && i.owned) ||
-                        (filter === 'free' && i.price === 0) ||
-                        (filter === 'available' &&
-                          !i.owned &&
-                          i.status === 'ACTIVE' &&
-                          data.level >= i.minLevel)),
+                    (i) => !i.owned && (slot === 'all' || i.slot === slot),
                   )
                   .sort((a, b) => Number(a.basic) - Number(b.basic))
                   .map((i) => (
