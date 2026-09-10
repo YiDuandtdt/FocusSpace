@@ -26,7 +26,7 @@
 
 版本：v1.0 ｜ 日期：2026-09-07 ｜ 定位：MVP 实现基线
 
-依据：《FocusSpace_产品需求文档_PRD_v1.0.docx》。本文将产品需求转为可直接开发的架构、业务规则、数据模型和接口契约。开发按能力闭环推进，不按天拆分；只保留保护主流程与数据正确性的必要验证。
+依据：《FocusSpace\_产品需求文档\_PRD_v1.0.docx》。本文将产品需求转为可直接开发的架构、业务规则、数据模型和接口契约。开发按能力闭环推进，不按天拆分；只保留保护主流程与数据正确性的必要验证。
 
 > 第六阶段增量（2026-09-09）：公开房间、房主转交/异常接任及管理员后台已实现。涉及房主超时结束、公开入口与后台待开发的旧基线描述，以 [第六阶段产品规则与管理员说明](阶段交付_公共共学与管理员系统.md) 为准。
 
@@ -38,12 +38,12 @@
 
 ### 1.1 范围划分
 
-| 范围 | 本期实现 |
-| --- | --- |
+| 范围     | 本期实现                                                                                                                                                                                   |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | 必须交付 | 注册、登录、昵称与基础 Avatar；房间码加入；成员与准备状态；25/5、50/10、自定义节奏；服务端计时；任务创建与完成同步；Break 聊天；单一 3D 房间；至少一种 BGM；结算持久化；刷新与短时断线恢复 |
-| 最小补充 | AFK 开关及视觉状态，用于闭合 PRD 的 A-03 验收；仅传递任务数量与进度，默认不公开标题；房主断线超时结束房间 |
-| 后续增强 | 公开房间、房主转移、更多主题和动画、任务标题公开设置、房间总体进度、个人历史页面、聊天历史查询、表情互动 |
-| 延后 | 自由移动与碰撞、视频语音、好友私聊、商城、排行榜、复杂反作弊、AI 扩展 |
+| 最小补充 | AFK 开关及视觉状态，用于闭合 PRD 的 A-03 验收；仅传递任务数量与进度，默认不公开标题；房主断线超时结束房间                                                                                  |
+| 后续增强 | 公开房间、房主转移、更多主题和动画、任务标题公开设置、房间总体进度、个人历史页面、聊天历史查询、表情互动                                                                                   |
+| 延后     | 自由移动与碰撞、视频语音、好友私聊、商城、排行榜、复杂反作弊、AI 扩展                                                                                                                      |
 
 注册登录按明确的 P0 需求实现；PRD 流程中提到的访客入口不进入本期。Admin 保留角色及敏感操作日志，本期不建设完整管理后台。基础 Summary 展示共同学习人数，房间共同专注时长与长期统计后续补充。
 
@@ -59,14 +59,14 @@
 
 当前工作区只有 PRD，没有既有代码约束。建议采用以下组合，具体兼容版本在建项时锁定到依赖锁文件，不以“最新版”为运行约束。
 
-| 层次 | 选择 | 作用 |
-| --- | --- | --- |
-| Web 界面 | React + TypeScript + Vite | 页面、表单、计时展示和房间状态视图 |
-| 3D | Three.js | 固定视角房间、座位及轻量 Avatar 状态 |
-| 服务端 | Node.js + TypeScript + Express | HTTP 接口、鉴权、业务服务与定时调度 |
-| 实时通道 | Socket.IO | 房间订阅、命令确认、状态广播和重连 |
-| 数据存储 | Prisma + SQLite | 用户、房间、任务、阶段与学习记录 |
-| 部署 | 一个应用服务 + 持久化目录 | 同源提供静态页面、HTTP 与实时连接 |
+| 层次     | 选择                           | 作用                                 |
+| -------- | ------------------------------ | ------------------------------------ |
+| Web 界面 | React + TypeScript + Vite      | 页面、表单、计时展示和房间状态视图   |
+| 3D       | Three.js                       | 固定视角房间、座位及轻量 Avatar 状态 |
+| 服务端   | Node.js + TypeScript + Express | HTTP 接口、鉴权、业务服务与定时调度  |
+| 实时通道 | Socket.IO                      | 房间订阅、命令确认、状态广播和重连   |
+| 数据存储 | Prisma + SQLite                | 用户、房间、任务、阶段与学习记录     |
+| 部署     | 一个应用服务 + 持久化目录      | 同源提供静态页面、HTTP 与实时连接    |
 
 SQLite 适合本设计的单实例课程项目规模；Prisma 提供 SQLite 连接器。后续确需多实例时，再评估 PostgreSQL、跨进程广播和唯一调度者，而非直接复制当前进程。[Prisma SQLite 文档](https://www.prisma.io/docs/orm/v6/overview/databases/sqlite)
 
@@ -80,17 +80,17 @@ SQLite 是持久化事实来源。内存只保存连接集合、房间命令队�
 
 ### 2.3 建议目录
 
-| 路径 | 内容 |
-| --- | --- |
-| apps/web/src/pages | 登录、首页、房间、Summary |
-| apps/web/src/features | 任务、聊天、成员、音频、计时组件 |
-| apps/web/src/scene | Three.js 场景、Avatar 与资源释放 |
-| apps/web/src/state | 房间快照、订阅及状态派生 |
-| apps/server/src/modules | auth、room、session、task、chat、record |
-| apps/server/src/realtime | Socket.IO 鉴权、订阅与消息适配 |
-| apps/server/src/jobs | 阶段调度、心跳检查和重启恢复 |
-| packages/shared | DTO、枚举、校验规则和错误码 |
-| prisma / assets / Doc | 数据模型与迁移 / 资源与授权说明 / 产品及开发文档 |
+| 路径                     | 内容                                             |
+| ------------------------ | ------------------------------------------------ |
+| apps/web/src/pages       | 登录、首页、房间、Summary                        |
+| apps/web/src/features    | 任务、聊天、成员、音频、计时组件                 |
+| apps/web/src/scene       | Three.js 场景、Avatar 与资源释放                 |
+| apps/web/src/state       | 房间快照、订阅及状态派生                         |
+| apps/server/src/modules  | auth、room、session、task、chat、record          |
+| apps/server/src/realtime | Socket.IO 鉴权、订阅与消息适配                   |
+| apps/server/src/jobs     | 阶段调度、心跳检查和重启恢复                     |
+| packages/shared          | DTO、枚举、校验规则和错误码                      |
+| prisma / assets / Doc    | 数据模型与迁移 / 资源与授权说明 / 产品及开发文档 |
 
 ## 3. 核心业务与状态设计
 
@@ -98,13 +98,13 @@ SQLite 是持久化事实来源。内存只保存连接集合、房间命令队�
 
 StudySession.phase 是阶段唯一来源；Room 通过 sessionId 获取状态，不再保存一份可以独立修改的 phase。roundNo 从 1 开始，LOBBY 时为 0。
 
-| 当前阶段 | 触发 | 下一阶段 | 服务端处理 |
-| --- | --- | --- | --- |
-| LOBBY | 房主 Start | FOCUS | 确认在线成员已准备；写入开始时间和第 1 轮 |
-| FOCUS | phaseEndAt 到期 | BREAK | 关闭本段专注，写入休息起止时间 |
-| BREAK | phaseEndAt 到期 | FOCUS | 轮次加一，建立新的专注时间段 |
-| LOBBY / FOCUS / BREAK | 房主结束或系统关闭 | ENDED | 关闭当前区间、结算一次、禁止继续写入 |
-| ENDED | 重复结束 | ENDED | 返回已有结算结果 |
+| 当前阶段              | 触发               | 下一阶段 | 服务端处理                                |
+| --------------------- | ------------------ | -------- | ----------------------------------------- |
+| LOBBY                 | 房主 Start         | FOCUS    | 确认在线成员已准备；写入开始时间和第 1 轮 |
+| FOCUS                 | phaseEndAt 到期    | BREAK    | 关闭本段专注，写入休息起止时间            |
+| BREAK                 | phaseEndAt 到期    | FOCUS    | 轮次加一，建立新的专注时间段              |
+| LOBBY / FOCUS / BREAK | 房主结束或系统关闭 | ENDED    | 关闭当前区间、结算一次、禁止继续写入      |
+| ENDED                 | 重复结束           | ENDED    | 返回已有结算结果                          |
 
 房主也须 Ready；至少有房主一人在线且当前保留的成员均在线、已准备，才能 Start。没有任务不阻止开始。新增成员后按最新成员集合重新判断。修改节奏会清除所有 Ready，防止成员在不知情下开始不同配置。
 
@@ -140,20 +140,20 @@ StudySession.phase 是阶段唯一来源；Room 通过 sessionId 获取状态，
 
 所有主键使用服务端生成的 ID；时间在库中使用 UTC，接口统一为 Unix 毫秒。以下列出业务关键字段，常规 createdAt / updatedAt 按需统一添加。
 
-| 实体 | 关键字段与约束 |
-| --- | --- |
-| User | id、username（唯一）、passwordHash、nickname、avatarId、role |
-| AuthSession | id、tokenHash（唯一）、userId、expiresAt、revokedAt |
-| Room | id、code（唯一）、name、ownerId、sessionId（唯一）、capacity、revision |
-| RoomMember | roomId、userId、seatIndex、ready、afk、connectionState、joinedAt、leftAt、lastSeenAt；唯一(roomId,userId) |
-| StudySession | id、phase、roundNo、focusSeconds、breakSeconds、phaseStartAt、phaseEndAt、startedAt、endedAt、endReason |
-| PhaseInterval | id、sessionId、roundNo、phase、startAt、endAt；唯一(sessionId,roundNo,phase) |
-| PresenceInterval | id、sessionId、userId、startAt、endAt、endReason；记录在线且非 AFK 的参与区间 |
-| Task | id、sessionId、userId、title、completed、completedAt、version |
-| ChatMessage | id、roomId、sessionId、userId、content、createdAt、requestId；唯一(userId,requestId) |
-| StudyRecord | id、sessionId、userId、focusSeconds、roundsCompleted、tasksDone、tasksTotal、studiedWith；唯一(sessionId,userId) |
-| CommandReceipt | userId、requestId、commandType、payloadHash、result、createdAt；唯一(userId,requestId) |
-| AuditLog | actorId、action、targetId、result、createdAt；仅记录管理员敏感操作 |
+| 实体             | 关键字段与约束                                                                                                   |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------- |
+| User             | id、username（唯一）、passwordHash、nickname、avatarId、role                                                     |
+| AuthSession      | id、tokenHash（唯一）、userId、expiresAt、revokedAt                                                              |
+| Room             | id、code（唯一）、name、ownerId、sessionId（唯一）、capacity、revision                                           |
+| RoomMember       | roomId、userId、seatIndex、ready、afk、connectionState、joinedAt、leftAt、lastSeenAt；唯一(roomId,userId)        |
+| StudySession     | id、phase、roundNo、focusSeconds、breakSeconds、phaseStartAt、phaseEndAt、startedAt、endedAt、endReason          |
+| PhaseInterval    | id、sessionId、roundNo、phase、startAt、endAt；唯一(sessionId,roundNo,phase)                                     |
+| PresenceInterval | id、sessionId、userId、startAt、endAt、endReason；记录在线且非 AFK 的参与区间                                    |
+| Task             | id、sessionId、userId、title、completed、completedAt、version                                                    |
+| ChatMessage      | id、roomId、sessionId、userId、content、createdAt、requestId；唯一(userId,requestId)                             |
+| StudyRecord      | id、sessionId、userId、focusSeconds、roundsCompleted、tasksDone、tasksTotal、studiedWith；唯一(sessionId,userId) |
+| CommandReceipt   | userId、requestId、commandType、payloadHash、result、createdAt；唯一(userId,requestId)                           |
+| AuditLog         | actorId、action、targetId、result、createdAt；仅记录管理员敏感操作                                               |
 
 Theme 与基础 Avatar 先用代码配置及本地静态资源，不为单一主题额外建管理系统。任务、消息、区间分别建立 sessionId + userId 或 sessionId + createdAt 查询索引。活动座位在房间串行加入事务中检查唯一；离开成员释放座位但保留历史成员关系。
 
@@ -179,18 +179,18 @@ Tasks / Completion：Session 结束时未删除任务的完成数、总数及比
 
 统一前缀 /api。身份来自登录会话；userId、role、ownerId 不信任客户端声明。读取操作负责查询或恢复；房间实时写操作统一经 Socket.IO 命令入口，避免两种入口行为分叉。
 
-| 方法与路径 | 输入或用途 | 关键返回 |
-| --- | --- | --- |
-| POST /auth/register | username、password、nickname | 用户资料 |
-| POST /auth/login | username、password | 设置会话 Cookie、用户资料 |
-| POST /auth/logout | 撤销当前登录会话 | 清除 Cookie、关闭该会话连接 |
-| GET /auth/me | 恢复登录状态 | 用户资料、当前房间 |
-| PATCH /users/me | nickname、avatarId | 更新后的用户资料 |
-| POST /rooms | name、focusSeconds、breakSeconds、requestId | roomId、code、sessionId |
-| POST /rooms/join | code、requestId | 成员资格、roomId、sessionId |
-| GET /rooms/:id/snapshot | 已授权成员恢复状态 | 按访问者过滤的完整快照 |
-| GET /sessions/:id/summary | 本人曾参与的已结束 Session | 本人 StudyRecord、房间轮次 |
-| GET /health | 运行与数据库可用性 | 简单就绪状态 |
+| 方法与路径                | 输入或用途                                  | 关键返回                    |
+| ------------------------- | ------------------------------------------- | --------------------------- |
+| POST /auth/register       | username、password、nickname                | 用户资料                    |
+| POST /auth/login          | username、password                          | 设置会话 Cookie、用户资料   |
+| POST /auth/logout         | 撤销当前登录会话                            | 清除 Cookie、关闭该会话连接 |
+| GET /auth/me              | 恢复登录状态                                | 用户资料、当前房间          |
+| PATCH /users/me           | nickname、avatarId                          | 更新后的用户资料            |
+| POST /rooms               | name、focusSeconds、breakSeconds、requestId | roomId、code、sessionId     |
+| POST /rooms/join          | code、requestId                             | 成员资格、roomId、sessionId |
+| GET /rooms/:id/snapshot   | 已授权成员恢复状态                          | 按访问者过滤的完整快照      |
+| GET /sessions/:id/summary | 本人曾参与的已结束 Session                  | 本人 StudyRecord、房间轮次  |
+| GET /health               | 运行与数据库可用性                          | 简单就绪状态                |
 
 注册后进入登录流程；不实现邮件校验和密码找回扩展。登录凭据使用随机不透明令牌，数据库仅保存摘要，Cookie 设置 HttpOnly、SameSite=Lax，HTTPS 部署启用 Secure。HTTP 写请求和 Socket.IO 握手校验 Origin；写操作再次验证会话未撤销。密码用成熟密码哈希库处理，禁止明文保存。
 
@@ -198,19 +198,19 @@ Tasks / Completion：Session 结束时未删除任务的完成数、总数及比
 
 客户端先通过 HTTP 获取成员资格，再发送 room:join 订阅；订阅本身不授予成员权限。所有命令使用 {requestId, roomId, payload}，确认统一为 {requestId, ok, revision, data, error}。事件使用 {eventId, roomId, sessionId, revision, serverTime, type, data}，revision 为持久化房间状态版本。
 
-| 客户端命令 | 权限与输入 | 结果事件 |
-| --- | --- | --- |
-| room:join / room:sync | 当前成员；订阅或恢复 | room:snapshot |
-| room:configure | 房主、LOBBY；节奏参数 | room:updated |
-| member:ready | 本人、LOBBY；ready 布尔值 | member:updated |
-| member:afk | 本人；afk 布尔值 | member:updated |
-| session:start | 房主；无客户端时间戳 | session:started |
-| task:create / task:delete | 本人；标题或 taskId | task:updated |
-| task:update | 本人；taskId、version、明确字段值 | task:updated |
-| chat:send | 当前成员、BREAK；content | chat:message |
-| member:leave | 本人；离开当前房间 | member:left / session:ended |
-| session:end | 房主；正常结束原因 | session:ended |
-| 服务端调度 | 到期切换阶段 | phase:change |
+| 客户端命令                | 权限与输入                        | 结果事件                    |
+| ------------------------- | --------------------------------- | --------------------------- |
+| room:join / room:sync     | 当前成员；订阅或恢复              | room:snapshot               |
+| room:configure            | 房主、LOBBY；节奏参数             | room:updated                |
+| member:ready              | 本人、LOBBY；ready 布尔值         | member:updated              |
+| member:afk                | 本人；afk 布尔值                  | member:updated              |
+| session:start             | 房主；无客户端时间戳              | session:started             |
+| task:create / task:delete | 本人；标题或 taskId               | task:updated                |
+| task:update               | 本人；taskId、version、明确字段值 | task:updated                |
+| chat:send                 | 当前成员、BREAK；content          | chat:message                |
+| member:leave              | 本人；离开当前房间                | member:left / session:ended |
+| session:end               | 房主；正常结束原因                | session:ended               |
+| 服务端调度                | 到期切换阶段                      | phase:change                |
 
 广播内容始终按公共字段输出；task:updated 的公共部分只有用户进度，完整任务通过该用户的确认或用户专属事件回传。头像变化及连接变化也发布 member:updated。客户端以事件统一包中的 type 区分状态变化，不依赖 DOM 当前页面判断业务是否合法。
 
@@ -230,12 +230,12 @@ Socket.IO 默认不保证断线消息补达，恢复功能也可能失败，因�
 
 ### 6.1 页面组织
 
-| 页面 | 核心内容 | 状态与交互 |
-| --- | --- | --- |
-| /login、/register | 账号表单 | 成功后进入首页或返回原房间 |
-| / | 创建房间、输入房间码 | 暂不展示无真实数据支撑的在线统计 |
-| /rooms/:roomId | Lobby 与 Focus/Break 共用容器 | phase 驱动内容切换，避免页面跳转丢连接 |
-| /sessions/:sessionId/summary | 时长、轮次、任务、共同学习人数 | 读取已保存记录；可创建新房间 |
+| 页面                         | 核心内容                       | 状态与交互                             |
+| ---------------------------- | ------------------------------ | -------------------------------------- |
+| /login、/register            | 账号表单                       | 成功后进入首页或返回原房间             |
+| /                            | 创建房间、输入房间码           | 暂不展示无真实数据支撑的在线统计       |
+| /rooms/:roomId               | Lobby 与 Focus/Break 共用容器  | phase 驱动内容切换，避免页面跳转丢连接 |
+| /sessions/:sessionId/summary | 时长、轮次、任务、共同学习人数 | 读取已保存记录；可创建新房间           |
 
 房间容器承载 PhaseTimer、TaskPanel、MemberList、ChatPanel、SceneCanvas、AudioControls。只保留一个 Socket 连接管理器；房间切换时解除旧订阅和监听。服务端快照状态与本地音量、面板开关、输入草稿分开保存。
 
@@ -273,13 +273,13 @@ PhaseInterval、成员参与区间及统计随 Session 保留；聊天内容默�
 
 每个阶段产出可运行能力，完成后继续下一阶段，不安排固定天数、独立等待期或大规模审查。必要修复随实现完成，不以覆盖率、重复演示次数作为机械停止条件。
 
-| 阶段 | 重点实现 | 可继续推进的结果 |
-| --- | --- | --- |
-| 工程与身份入口 | 前后端工程、共享类型、数据库迁移、登录、创建和加入房间 | 两个独立账号进入同一房间 |
-| 共享学习主流程 | 成员订阅、Ready、服务端状态机、时间戳、Focus/Break 切换 | 多端经历同一轮次与阶段 |
-| 任务与交流 | 任务保存和进度广播、私有字段过滤、Break 聊天 | 专注推进任务，休息正常交流 |
-| 空间与复盘 | 单一 3D 房间、Avatar 状态、BGM、参与区间和 Summary | 共学体验与结束记录闭合 |
-| 恢复与交付 | 快照重连、房主异常结束、启动恢复、部署配置与必要修复 | 可启动、可恢复、可演示的完整版本 |
+| 阶段           | 重点实现                                                | 可继续推进的结果                 |
+| -------------- | ------------------------------------------------------- | -------------------------------- |
+| 工程与身份入口 | 前后端工程、共享类型、数据库迁移、登录、创建和加入房间  | 两个独立账号进入同一房间         |
+| 共享学习主流程 | 成员订阅、Ready、服务端状态机、时间戳、Focus/Break 切换 | 多端经历同一轮次与阶段           |
+| 任务与交流     | 任务保存和进度广播、私有字段过滤、Break 聊天            | 专注推进任务，休息正常交流       |
+| 空间与复盘     | 单一 3D 房间、Avatar 状态、BGM、参与区间和 Summary      | 共学体验与结束记录闭合           |
+| 恢复与交付     | 快照重连、房主异常结束、启动恢复、部署配置与必要修复    | 可启动、可恢复、可演示的完整版本 |
 
 幂等、权限和事务在对应模块首次实现时一起完成；最后一阶段做连接恢复与部署联调，不把基础一致性留到最后补救。先做基础几何体与正常业务链路，再补视觉细节；P0 完成后才选 P1。
 
@@ -301,4 +301,14 @@ PRD 第 5、6 节对应本文功能边界与页面设计；第 7 节对应服务
 
 对 PRD 的主要补充为：迟到直接同步当前阶段、房主断线超时结束、AFK 最小实现、任务标题默认私有、个人有效时长与轮次口径、单房单 Session 和单实例部署。后续产品决定调整时，集中修改相关规则与契约，不扩散为零散页面判断。
 
-产品依据：同目录《FocusSpace_产品需求文档_PRD_v1.0.docx》，版本 v1.0，2026-09-07。技术文档链接已在相应设计处标注，仅用于确认组件能力；容量、超时、统计及实现阶段均为本文设计选择。
+产品依据：同目录《FocusSpace\_产品需求文档\_PRD_v1.0.docx》，版本 v1.0，2026-09-07。技术文档链接已在相应设计处标注，仅用于确认组件能力；容量、超时、统计及实现阶段均为本文设计选择。
+
+## 10. 计划、分析与目标轮数增量（2026-09-10）
+
+Todo 是账号长期对象，Task 是单场 Session 对象。Task.todoId 建立来源关联，`[sessionId,userId,todoId]` 唯一索引防止重复导入；Todo.parentId 与 Task.parentId 分别保存两棵子任务树。HTTP 待办更新与 Socket.IO 房间任务更新均在同一 Prisma 事务内同步对端完成状态和版本。加入房间使用 CommandReceipt 幂等凭据，重复请求返回原结果。
+
+StudySession.targetRounds 为可空整数：空值代表无限轮。`advanceSession` 使用传入时间与持久化边界推进，最后一轮 Focus 到期后直接调用统一的 `finalizeSession`，关闭在线区间、保存 StudyRecord、发放奖励并标记 `ROUNDS_COMPLETED`。重启恢复仍经过相同路径，因此不依赖客户端倒计时。
+
+分析接口按上海时区计算日、自然周和自然月窗口，从正式 StudyRecord 聚合；热力图固定返回最近 84 天。标签与任务来自对应 Session 的 Task 快照，单任务秒数按场次任务数均分。排行榜实时聚合本周正式记录和 GrowthAccount 等级，返回前 50 名及当前用户标识。
+
+增量迁移只新增 Todo 表、Task 关联与属性列、StudySession.targetRounds，不改写旧任务和历史记录。旧 Session 的 targetRounds 为空，保持原先无限循环行为。验证脚本使用独立临时 SQLite 和可控时钟，不等待真实番茄钟周期。

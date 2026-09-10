@@ -14,6 +14,7 @@ import './features/space/immersion.css';
 import './experience.css';
 import './features/growth.css';
 import './features/space/personal.css';
+import './features/planning.css';
 import { RouteAnnouncer } from './navigation';
 
 const RoomPage = lazy(() => import('./pages/RoomPage').then((m) => ({ default: m.RoomPage })));
@@ -26,6 +27,13 @@ const GrowthAdminPage = lazy(() =>
 const AdminPage = lazy(() => import('./pages/AdminPage').then((m) => ({ default: m.AdminPage })));
 const PersonalSpacePage = lazy(() =>
   import('./pages/PersonalSpacePage').then((m) => ({ default: m.PersonalSpacePage })),
+);
+const TodoPage = lazy(() => import('./pages/TodoPage').then((m) => ({ default: m.TodoPage })));
+const AnalyticsPage = lazy(() =>
+  import('./pages/AnalyticsPage').then((m) => ({ default: m.AnalyticsPage })),
+);
+const LeaderboardPage = lazy(() =>
+  import('./pages/LeaderboardPage').then((m) => ({ default: m.LeaderboardPage })),
 );
 
 function Protected({ children }: { children: ReactNode }) {
@@ -77,6 +85,30 @@ function App() {
             }
           >
             <Routes key={user?.id ?? 'anonymous'}>
+              <Route
+                path="/todos"
+                element={
+                  <Protected>
+                    <TodoPage />
+                  </Protected>
+                }
+              />
+              <Route
+                path="/analytics"
+                element={
+                  <Protected>
+                    <AnalyticsPage />
+                  </Protected>
+                }
+              />
+              <Route
+                path="/leaderboard"
+                element={
+                  <Protected>
+                    <LeaderboardPage />
+                  </Protected>
+                }
+              />
               <Route
                 path="/growth"
                 element={

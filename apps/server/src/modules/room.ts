@@ -70,6 +70,7 @@ export async function createRoom(
     name: string;
     focusSeconds: number;
     breakSeconds: number;
+    targetRounds: number | null;
     visibility?: string;
   },
 ) {
@@ -117,6 +118,7 @@ export async function createRoom(
             create: {
               focusSeconds: input.focusSeconds,
               breakSeconds: input.breakSeconds,
+              targetRounds: input.targetRounds,
               rewardRules: JSON.stringify(await currentRules(tx)),
             },
           },
@@ -201,6 +203,11 @@ export async function snapshot(roomId: string, userId: string): Promise<RoomSnap
       select: {
         id: true,
         title: true,
+        todoId: true,
+        parentId: true,
+        priority: true,
+        dueAt: true,
+        labels: true,
         completed: true,
         completedAt: true,
         version: true,
@@ -245,6 +252,7 @@ export async function snapshot(roomId: string, userId: string): Promise<RoomSnap
       roundNo: room.session.roundNo,
       focusSeconds: room.session.focusSeconds,
       breakSeconds: room.session.breakSeconds,
+      targetRounds: room.session.targetRounds,
       phaseStartAt: room.session.phaseStartAt?.getTime() ?? null,
       phaseEndAt: room.session.phaseEndAt?.getTime() ?? null,
       endedAt: room.session.endedAt?.getTime() ?? null,
@@ -301,6 +309,16 @@ export async function snapshot(roomId: string, userId: string): Promise<RoomSnap
     myTasks: myTasks.map((t) => ({
       ...t,
       visibility: t.visibility as 'PRIVATE' | 'PUBLIC',
+      priority: t.priority as 'LOW' | 'MEDIUM' | 'HIGH',
+      labels: (() => {
+        try {
+          const labels = JSON.parse(t.labels);
+          return Array.isArray(labels) ? labels : [];
+        } catch {
+          return [];
+        }
+      })(),
+      dueAt: t.dueAt?.getTime() ?? null,
       completedAt: t.completedAt?.getTime() ?? null,
     })),
     demoAvailable: config.DEMO_MODE === 'true',
@@ -472,6 +490,7 @@ export async function mutateMember(
     seatIndex?: number;
     focusSeconds?: number;
     breakSeconds?: number;
+    targetRounds?: number | null;
   },
 ) {
   return db.$transaction((tx) =>
@@ -491,7 +510,11 @@ export async function mutateMember(
           throw new AppError('INVALID_PHASE', '只能在大厅修改节奏', 409);
         await tx.studySession.update({
           where: { id: room.sessionId },
-          data: { focusSeconds: payload.focusSeconds, breakSeconds: payload.breakSeconds },
+          data: {
+            focusSeconds: payload.focusSeconds,
+            breakSeconds: payload.breakSeconds,
+            targetRounds: payload.targetRounds,
+          },
         });
         await tx.roomMember.updateMany({ where: { roomId, leftAt: null }, data: { ready: false } });
       } else if (type === 'member:seat') {
@@ -507,8 +530,7 @@ export async function mutateMember(
           where: { roomId, leftAt: null, seatIndex: payload.seatIndex, id: { not: member.id } },
           select: { id: true },
         });
-        if (occupied)
-          throw new AppError('SEAT_TAKEN', '这个座位刚刚被选走，请换一个', 409);
+        if (occupied) throw new AppError('SEAT_TAKEN', '这个座位刚刚被选走，请换一个', 409);
         await tx.roomMember.update({
           where: { id: member.id },
           data: { seatIndex: payload.seatIndex, ready: false },

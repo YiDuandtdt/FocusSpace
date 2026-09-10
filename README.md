@@ -1,5 +1,7 @@
 # FocusSpace
 
+计划与复盘升级（2026-09-10）：导航栏新增[待办清单](http://localhost:3001/todos)、[数据统计](http://localhost:3001/analytics)和[排行榜](http://localhost:3001/leaderboard)。待办支持优先级、截止日期、标签、子任务、日程、月历及每日/每周重复；可多选加入当前房间，并与房间任务双向同步完成状态。创建房间可选固定轮数或无限轮。验证：`npm run test:planning`、`npm run test:planning-ui`。规则和限制见[本阶段交付说明](Doc/阶段交付_计划统计与排行榜.md)。
+
 学习成长与装扮升级（2026-09-10）：[用户入口](http://localhost:3001/growth)、[管理员入口](http://localhost:3001/admin/growth)。有效专注按服务端记录获得经验与学习币，兑换永久资产并用于个人形象、自习室；结束 Summary 展示到账结果。此阶段明确覆盖原「暂不做货币和装扮」范围。完整规则、增量升级、隔离演示及限制见 [本阶段交付说明](Doc/阶段交付_学习成长与装扮.md)。验证：`npm run test:growth`；独立演示：`npm run demo:growth`（专用数据库与 127.0.0.2:4319，随机账号密码打印在终端）。
 
 个人空间升级（2026-09-09）：首页/顶部「个人空间」可编辑长期保存的虚拟形象与自习室，账号头像独立上传；新共学复制发起人的布置快照。见 [v1.1 PRD](Doc/FocusSpace_产品需求文档_PRD_v1.1.md) 与 [本阶段交付、迁移及截图](Doc/阶段交付_个人空间与卡通低模.md)。升级前先备份数据库，再 `npm run setup`、`npm run build`。当前体验入口 `http://localhost:3001/space`；如切换到 `npm run start:local` 的 3002 端口，先停止原服务，同一数据库只运行一个实例。定向验证：`npm run test:personal`。
@@ -46,15 +48,15 @@ npm run db:deploy
 
 `.env.example` 是配置模板；实际 `.env`、数据库、备份和验证产物均不提交 Git。默认数据库是 `prisma/data/focusspace.db`，独立于 `dist`，构建和重启不会清空。正式部署建议将 `DATABASE_URL` 指向应用更新目录之外的持久化目录。
 
-| 变量 | 默认值 / 用途 |
-| --- | --- |
-| `DATABASE_URL` | `file:./data/focusspace.db`，相对 `prisma/`；可用绝对路径，如 `file:D:/FocusSpaceData/focusspace.db` 或 `file:/srv/focusspace-data/focusspace.db` |
-| `HOST` / `PORT` | `127.0.0.1` / `3001`；需要对外监听时显式设 `HOST=0.0.0.0` |
-| `APP_ORIGINS` | 逗号分隔的完整浏览器来源；示例包含本地开发与生产。改端口、域名后须同步修改 |
-| `COOKIE_SECURE` | 本地 HTTP 为 `false`，HTTPS 为 `true` |
-| `SESSION_DAYS` | 登录有效期，默认 7 天 |
-| `DISCONNECT_GRACE_MS` | 断线保留时间，默认 60000 毫秒；范围 1000–300000 |
-| `DEMO_MODE` | 默认 `false`；`true` 开放已有的 45/15 秒节奏和显式演示账号初始化 |
+| 变量                  | 默认值 / 用途                                                                                                                                     |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `DATABASE_URL`        | `file:./data/focusspace.db`，相对 `prisma/`；可用绝对路径，如 `file:D:/FocusSpaceData/focusspace.db` 或 `file:/srv/focusspace-data/focusspace.db` |
+| `HOST` / `PORT`       | `127.0.0.1` / `3001`；需要对外监听时显式设 `HOST=0.0.0.0`                                                                                         |
+| `APP_ORIGINS`         | 逗号分隔的完整浏览器来源；示例包含本地开发与生产。改端口、域名后须同步修改                                                                        |
+| `COOKIE_SECURE`       | 本地 HTTP 为 `false`，HTTPS 为 `true`                                                                                                             |
+| `SESSION_DAYS`        | 登录有效期，默认 7 天                                                                                                                             |
+| `DISCONNECT_GRACE_MS` | 断线保留时间，默认 60000 毫秒；范围 1000–300000                                                                                                   |
+| `DEMO_MODE`           | 默认 `false`；`true` 开放已有的 45/15 秒节奏和显式演示账号初始化                                                                                  |
 
 仅运行 **一个服务进程**，不使用 cluster、多副本或多个进程共享数据库。HTTPS 反向代理需转发 WebSocket Upgrade，设置大于心跳周期的连接超时，并配置真实网页来源。当前没有公网部署目标，交付本地生产运行及部署文件。
 

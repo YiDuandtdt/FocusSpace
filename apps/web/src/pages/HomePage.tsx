@@ -16,6 +16,7 @@ export function HomePage() {
   const [visibility, setVisibility] = useState<'PRIVATE' | 'PUBLIC'>('PRIVATE');
   const [focus, setFocus] = useState(() => readPreferences(user!.id).focusSeconds / 60);
   const [rest, setRest] = useState(() => readPreferences(user!.id).breakSeconds / 60);
+  const [rounds, setRounds] = useState<number | null>(() => readPreferences(user!.id).targetRounds);
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState('');
   const [saved, setSaved] = useState('');
@@ -36,6 +37,7 @@ export function HomePage() {
               visibility,
               focusSeconds: focus * 60,
               breakSeconds: rest * 60,
+              targetRounds: rounds,
               requestId: createRequestId(),
             }
           : { code, requestId: createRequestId() };
@@ -133,7 +135,14 @@ export function HomePage() {
               <option value="PUBLIC">公开 · 首页展示，其他用户可加入</option>
             </select>
           </label>
-          <RhythmFields focus={focus} rest={rest} setFocus={setFocus} setRest={setRest} />
+          <RhythmFields
+            focus={focus}
+            rest={rest}
+            rounds={rounds}
+            setFocus={setFocus}
+            setRest={setRest}
+            setRounds={setRounds}
+          />
           <details className="preference-details">
             <summary>保存常用节奏</summary>
             <button
@@ -149,7 +158,11 @@ export function HomePage() {
                   Number.isInteger(rest)
                 )
                   setSaved(
-                    savePreferences(user!.id, { focusSeconds: focus * 60, breakSeconds: rest * 60 })
+                    savePreferences(user!.id, {
+                      focusSeconds: focus * 60,
+                      breakSeconds: rest * 60,
+                      targetRounds: rounds,
+                    })
                       ? '默认节奏已保存，仅用于新建房间。'
                       : '浏览器未允许保存偏好。',
                   );

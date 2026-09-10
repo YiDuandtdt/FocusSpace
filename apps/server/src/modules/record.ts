@@ -121,9 +121,14 @@ export async function summary(sessionId: string, userId: string): Promise<Sessio
   } catch {
     console.warn('Reward compensation deferred; pending records retained');
   }
-  const [record, phases] = await Promise.all([
+  const [record, phases, tasks] = await Promise.all([
     db.studyRecord.findUnique({ where: { sessionId_userId: { sessionId, userId } } }),
     db.phaseInterval.findMany({ where: { sessionId, phase: 'FOCUS', endAt: { not: null } } }),
+    db.task.findMany({
+      where: { sessionId, userId },
+      select: { title: true, completed: true, labels: true },
+      orderBy: { createdAt: 'asc' },
+    }),
   ]);
   // Phase-one rooms that ended before this migration have no time or tasks.
   const values = record ?? {
@@ -133,6 +138,25 @@ export async function summary(sessionId: string, userId: string): Promise<Sessio
     tasksTotal: 0,
     studiedWith: 0,
   };
+  const focusPerTask = tasks.length ? Math.round(values.focusSeconds / tasks.length) : 0;
+  const taskAnalysis = tasks.map((task) => {
+    let labels: string[] = [];
+    try {
+      const parsed = JSON.parse(task.labels);
+      if (Array.isArray(parsed)) labels = parsed.filter((label): label is string => typeof label === 'string');
+    } catch {}
+    return { title: task.title, completed: task.completed, focusSeconds: focusPerTask, labels };
+  });
+  const labelMap = new Map<string, { tasksDone: number; tasksTotal: number; focusSeconds: number }>();
+  for (const task of taskAnalysis) {
+    for (const label of task.labels.length ? task.labels : ['未分类']) {
+      const value = labelMap.get(label) ?? { tasksDone: 0, tasksTotal: 0, focusSeconds: 0 };
+      value.tasksDone += Number(task.completed);
+      value.tasksTotal++;
+      value.focusSeconds += Math.round(task.focusSeconds / Math.max(1, task.labels.length));
+      labelMap.set(label, value);
+    }
+  }
   return {
     reward: record ? await rewardSummary(record.id) : undefined,
     sessionId,
@@ -156,6 +180,10 @@ export async function summary(sessionId: string, userId: string): Promise<Sessio
       progressPercent: values.tasksTotal
         ? Math.round((values.tasksDone / values.tasksTotal) * 100)
         : null,
+    },
+    analysis: {
+      labels: [...labelMap].map(([label, value]) => ({ label, ...value })).sort((a, b) => b.focusSeconds - a.focusSeconds),
+      tasks: taskAnalysis,
     },
   };
 }

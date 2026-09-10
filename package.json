@@ -32,6 +32,8 @@
     "audio:generate": "node scripts/generate-ambience.mjs",
     "audio:prepare": "node scripts/prepare-ambience.mjs",
     "test:feedback": "tsx scripts/verify-feedback.ts",
+    "test:planning": "tsx scripts/verify-planning.ts",
+    "test:planning-ui": "tsx scripts/verify-planning-ui.ts",
     "admin:init": "node --env-file=.env scripts/init-admin.mjs",
     "test:admin": "tsx scripts/verify-admin.ts",
     "test:ui": "tsx scripts/verify-ui.ts",

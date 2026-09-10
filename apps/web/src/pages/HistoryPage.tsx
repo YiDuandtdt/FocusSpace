@@ -108,6 +108,15 @@ export function HistoryPage({ recent = false }: { recent?: boolean }) {
                       {s.demoMode ? '演示记录' : '正式记录'} ·{' '}
                       {Math.floor(s.record.focusSeconds / 60)} 分 {s.record.focusSeconds % 60} 秒
                     </p>
+                    <small className="history-analysis">
+                      任务 {s.record.tasksDone}/{s.record.tasksTotal}
+                      {s.analysis.labels.length
+                        ? ` · ${s.analysis.labels
+                            .slice(0, 3)
+                            .map((item) => `#${item.label}`)
+                            .join(' ')}`
+                        : ''}
+                    </small>
                   </div>
                   <Link className="text-button" to={'/sessions/' + s.sessionId + '/summary'}>
                     查看学习总结 ↗

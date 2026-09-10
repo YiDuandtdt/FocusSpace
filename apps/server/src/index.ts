@@ -45,6 +45,8 @@ import {
   growthAdmin,
   currentRules,
 } from './modules/growth.js';
+import { addTodoToRoom, archiveTodo, createTodo, todos, updateTodo } from './modules/todo.js';
+import { analytics, leaderboards } from './modules/analytics.js';
 
 await db.$connect();
 await db.$queryRaw`PRAGMA journal_mode=WAL`;
@@ -207,6 +209,53 @@ app.put('/api/users/me/space', async (req, res) => {
     return personal;
   });
   res.json(result);
+});
+app.get('/api/users/me/todos', async (req, res) => {
+  const auth = await authenticate(req.headers.cookie);
+  res.json({ items: await todos(auth.userId) });
+});
+app.post('/api/users/me/todos', async (req, res) => {
+  const item = await serialize(async () => {
+    const auth = await authenticate(req.headers.cookie);
+    return createTodo(auth.userId, req.body);
+  });
+  res.status(201).json(item);
+});
+app.patch('/api/users/me/todos/:id', async (req, res) => {
+  const result = await serialize(async () => {
+    const auth = await authenticate(req.headers.cookie);
+    return updateTodo(auth.userId, req.params.id as string, req.body);
+  });
+  for (const roomId of result.roomIds) await realtime.broadcast(roomId, 'task:update');
+  res.json(result.todo);
+});
+app.delete('/api/users/me/todos/:id', async (req, res) => {
+  const input = z.object({ version: z.number().int().positive() }).strict().parse(req.body);
+  res.json(
+    await serialize(async () => {
+      const auth = await authenticate(req.headers.cookie);
+      return archiveTodo(auth.userId, req.params.id as string, input.version);
+    }),
+  );
+});
+app.post('/api/users/me/todos/:id/room', async (req, res) => {
+  const result = await serialize(async () => {
+    const auth = await authenticate(req.headers.cookie);
+    return addTodoToRoom(auth.userId, req.params.id as string, req.body);
+  });
+  await realtime.broadcast(result.roomId, 'task:create');
+  res.json(result);
+});
+app.get('/api/users/me/analytics', async (req, res) => {
+  const period = z.enum(['day', 'week', 'month']).parse(req.query.period ?? 'week');
+  const anchor = req.query.anchor === undefined ? Date.now() : Number(req.query.anchor);
+  if (!Number.isFinite(anchor)) throw new AppError('VALIDATION_ERROR', '统计日期无效', 400);
+  const auth = await authenticate(req.headers.cookie);
+  res.json(await analytics(auth.userId, period, anchor));
+});
+app.get('/api/leaderboards', async (req, res) => {
+  const auth = await authenticate(req.headers.cookie);
+  res.json(await leaderboards(auth.userId));
 });
 app.post(
   '/api/users/me/avatar',

@@ -4,6 +4,7 @@ import { isTrackId, type TrackId } from './features/audio/tracks';
 export type Preferences = {
   focusSeconds: number;
   breakSeconds: number;
+  targetRounds: number | null;
   volume: number;
   cards: boolean;
   sound: TrackId;
@@ -13,6 +14,7 @@ export type Preferences = {
 const defaults: Preferences = {
   focusSeconds: 1500,
   breakSeconds: 300,
+  targetRounds: 4,
   volume: 35,
   cards: false,
   sound: 'rain',

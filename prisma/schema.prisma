@@ -42,6 +42,7 @@ model User {
   messages     ChatMessage[]
   presence     PresenceInterval[]
   records      StudyRecord[]
+  todos        Todo[]
 }
 model AuthSession {
   id        String @id @default(cuid())
@@ -80,6 +81,7 @@ model StudySession {
   roundNo      Int @default(0)
   focusSeconds Int
   breakSeconds Int
+  targetRounds Int?
   phaseStartAt DateTime?
   phaseEndAt   DateTime?
   startedAt    DateTime?
@@ -121,7 +123,15 @@ model Task {
   session     StudySession @relation(fields: [sessionId], references: [id])
   userId      String
   user        User @relation(fields: [userId], references: [id])
+  todoId      String?
+  todo        Todo? @relation(fields: [todoId], references: [id], onDelete: SetNull)
+  parentId    String?
+  parent      Task? @relation("TaskTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children    Task[] @relation("TaskTree")
   title       String
+  priority    String @default("MEDIUM")
+  dueAt       DateTime?
+  labels      String @default("[]")
   visibility  String @default("PRIVATE")
   firstCompletedRound Int?
   completed   Boolean @default(false)
@@ -129,6 +139,36 @@ model Task {
   version     Int @default(1)
   createdAt   DateTime @default(now())
   @@index([sessionId, userId])
+  @@index([parentId])
+  @@index([todoId])
+  @@unique([sessionId, userId, todoId])
+}
+
+model Todo {
+  id          String @id @default(cuid())
+  userId      String
+  user        User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parentId    String?
+  parent      Todo? @relation("TodoTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children    Todo[] @relation("TodoTree")
+  title       String
+  completed   Boolean @default(false)
+  completedAt DateTime?
+  priority    String @default("MEDIUM")
+  dueAt       DateTime?
+  scheduledStart DateTime?
+  scheduledEnd DateTime?
+  labels      String @default("[]")
+  recurrence  String @default("NONE")
+  seriesId    String?
+  version     Int @default(1)
+  archivedAt  DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  roomTasks   Task[]
+  @@index([userId, archivedAt, dueAt])
+  @@index([parentId])
+  @@index([seriesId])
 }
 model ChatMessage {
   id        String @id @default(cuid())

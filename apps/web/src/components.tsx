@@ -127,6 +127,15 @@ export function Shell({ children }: { children: ReactNode }) {
               <NavLink to="/history" className="text-button nav-link">
                 学习历史
               </NavLink>
+              <NavLink to="/todos" className="text-button nav-link">
+                待办清单
+              </NavLink>
+              <NavLink to="/analytics" className="text-button nav-link">
+                数据统计
+              </NavLink>
+              <NavLink to="/leaderboard" className="text-button nav-link">
+                排行榜
+              </NavLink>
               {user.role === 'ADMIN' ? (
                 <Link to="/admin" className="text-button">
                   管理后台
@@ -324,12 +333,16 @@ export function RhythmFields({
   rest,
   setFocus,
   setRest,
+  rounds,
+  setRounds,
   disabled = false,
 }: {
   focus: number;
   rest: number;
   setFocus: (n: number) => void;
   setRest: (n: number) => void;
+  rounds: number | null;
+  setRounds: (n: number | null) => void;
   disabled?: boolean;
 }) {
   return (
@@ -377,6 +390,22 @@ export function RhythmFields({
             value={rest}
             onChange={(e) => setRest(Number(e.target.value))}
           />
+        </label>
+        <label>
+          专注轮数
+          <select
+            value={rounds === null ? 'infinite' : String(rounds)}
+            onChange={(event) =>
+              setRounds(event.target.value === 'infinite' ? null : Number(event.target.value))
+            }
+          >
+            {[1, 2, 3, 4, 6, 8, 12].map((value) => (
+              <option value={value} key={value}>
+                {value} 轮
+              </option>
+            ))}
+            <option value="infinite">无限轮 · 手动结束</option>
+          </select>
         </label>
       </div>
     </fieldset>

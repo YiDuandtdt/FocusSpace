@@ -32,13 +32,61 @@ export const registerSchema = credentialsSchema.extend({
 export const rhythmSchema = z.object({
   focusSeconds: z.number().int().min(60).max(10800),
   breakSeconds: z.number().int().min(60).max(3600),
+  targetRounds: z.number().int().min(1).max(100).nullable().default(4),
 });
 export const demoRhythmSchema = z.object({
   focusSeconds: z.literal(45),
   breakSeconds: z.literal(15),
+  targetRounds: z.number().int().min(1).max(100).nullable().default(1),
 });
+export const prioritySchema = z.enum(['LOW', 'MEDIUM', 'HIGH']);
+export const recurrenceSchema = z.enum(['NONE', 'DAILY', 'WEEKLY']);
+const labelsSchema = z
+  .array(z.string().trim().min(1).max(24))
+  .max(8)
+  .transform((items) => [...new Set(items)]);
+const optionalDateSchema = z.string().datetime({ offset: true }).nullable().optional();
+const todoFieldsSchema = z
+  .object({
+    title: z.string().trim().min(1, '请输入待办标题').max(200),
+    parentId: z.string().min(1).max(100).nullable().optional(),
+    priority: prioritySchema.default('MEDIUM'),
+    dueAt: optionalDateSchema,
+    scheduledStart: optionalDateSchema,
+    scheduledEnd: optionalDateSchema,
+    labels: labelsSchema.default([]),
+    recurrence: recurrenceSchema.default('NONE'),
+  })
+  .strict();
+export const todoCreateSchema = todoFieldsSchema
+  .refine(
+    (v) => !v.scheduledStart || !v.scheduledEnd || v.scheduledEnd > v.scheduledStart,
+    '日程结束时间必须晚于开始时间',
+  )
+  .refine(
+    (v) => v.recurrence === 'NONE' || !!v.dueAt || !!v.scheduledStart,
+    '重复任务需要设置截止日期或日程开始时间',
+  );
+export const todoUpdateSchema = todoFieldsSchema
+  .partial()
+  .extend({ version: z.number().int().positive(), completed: z.boolean().optional() })
+  .refine(
+    (v) => !v.scheduledStart || !v.scheduledEnd || v.scheduledEnd > v.scheduledStart,
+    '日程结束时间必须晚于开始时间',
+  )
+  .refine((v) => Object.keys(v).some((key) => key !== 'version'), '请提供修改内容');
+export const todoRoomSchema = z
+  .object({ roomId: z.string().min(1).max(100), requestId: z.string().uuid('请求标识无效') })
+  .strict();
 export const taskCreateSchema = z
-  .object({ title: z.string().trim().min(1, '请输入任务标题').max(200, '任务标题最多 200 字') })
+  .object({
+    title: z.string().trim().min(1, '请输入任务标题').max(200, '任务标题最多 200 字'),
+    parentTaskId: z.string().min(1).max(100).nullable().optional(),
+    todoId: z.string().min(1).max(100).optional(),
+    priority: prioritySchema.default('MEDIUM'),
+    dueAt: optionalDateSchema,
+    labels: labelsSchema.default([]),
+  })
   .strict();
 export const taskDeleteSchema = z
   .object({ taskId: z.string().min(1).max(100), version: z.number().int().positive() })
@@ -48,9 +96,18 @@ export const taskUpdateSchema = taskDeleteSchema
     title: taskCreateSchema.shape.title.optional(),
     completed: z.boolean().optional(),
     visibility: z.enum(['PRIVATE', 'PUBLIC']).optional(),
+    priority: prioritySchema.optional(),
+    dueAt: optionalDateSchema,
+    labels: labelsSchema.optional(),
   })
   .refine(
-    (v) => v.title !== undefined || v.completed !== undefined || v.visibility !== undefined,
+    (v) =>
+      v.title !== undefined ||
+      v.completed !== undefined ||
+      v.visibility !== undefined ||
+      v.priority !== undefined ||
+      v.dueAt !== undefined ||
+      v.labels !== undefined,
     '请提供修改内容',
   );
 export const chatSendSchema = z
@@ -125,6 +182,7 @@ export type RoomSnapshot = {
     roundNo: number;
     focusSeconds: number;
     breakSeconds: number;
+    targetRounds: number | null;
     phaseStartAt: number | null;
     phaseEndAt: number | null;
     endedAt: number | null;
@@ -188,9 +246,63 @@ export type Task = {
   visibility: 'PRIVATE' | 'PUBLIC';
   id: string;
   title: string;
+  todoId: string | null;
+  parentId: string | null;
+  priority: 'LOW' | 'MEDIUM' | 'HIGH';
+  dueAt: number | null;
+  labels: string[];
   completed: boolean;
   completedAt: number | null;
   version: number;
+};
+export type Todo = {
+  id: string;
+  parentId: string | null;
+  title: string;
+  completed: boolean;
+  completedAt: number | null;
+  priority: 'LOW' | 'MEDIUM' | 'HIGH';
+  dueAt: number | null;
+  scheduledStart: number | null;
+  scheduledEnd: number | null;
+  labels: string[];
+  recurrence: 'NONE' | 'DAILY' | 'WEEKLY';
+  version: number;
+  linkedRoomId: string | null;
+  children: Todo[];
+};
+export type AnalyticsPoint = {
+  key: string;
+  label: string;
+  focusSeconds: number;
+  tasksDone: number;
+  tasksTotal: number;
+};
+export type AnalyticsReport = {
+  period: 'day' | 'week' | 'month';
+  startAt: number;
+  endAt: number;
+  totals: { focusSeconds: number; sessions: number; tasksDone: number; tasksTotal: number };
+  previous: { focusSeconds: number; sessions: number; tasksDone: number; tasksTotal: number };
+  trend: AnalyticsPoint[];
+  heatmap: { date: string; focusSeconds: number }[];
+  labels: { label: string; tasksDone: number; tasksTotal: number; focusSeconds: number }[];
+  tasks: { title: string; completed: boolean; focusSeconds: number; labels: string[] }[];
+};
+export type LeaderboardEntry = {
+  rank: number;
+  userId: string;
+  nickname: string;
+  avatarId: User['avatarId'];
+  avatarUrl: string | null;
+  value: number;
+  level: number;
+  isMe: boolean;
+};
+export type Leaderboards = {
+  weekStart: number;
+  focus: LeaderboardEntry[];
+  level: LeaderboardEntry[];
 };
 export type ChatMessage = {
   id: string;
@@ -227,6 +339,10 @@ export type SessionSummary = {
     tasksTotal: number;
     progressPercent: number | null;
     studiedWith: number;
+  };
+  analysis: {
+    labels: { label: string; tasksDone: number; tasksTotal: number; focusSeconds: number }[];
+    tasks: { title: string; completed: boolean; focusSeconds: number; labels: string[] }[];
   };
 };
 

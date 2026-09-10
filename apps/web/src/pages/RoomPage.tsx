@@ -142,23 +142,23 @@ export function RoomPage() {
         <div className="room-invite-actions">
           <button
             className="invite-code"
-          onClick={() => {
-            setActionError('');
-            setSuccess('');
-            setCopied(false);
-            void copyText(data.room.code)
-              .then(() => {
-                setCopied(true);
-                setSuccess('房间码已复制，分享给朋友一起入座。');
-              })
-              .catch(() => setActionError(`复制未成功，请手动复制房间码：${data.room.code}`));
-          }}
-        >
-          <span>{copied ? '已复制房间码' : '房间码 · 点击复制'}</span>
-          <strong>{data.room.code}</strong>
-          <small>
-            {ended ? '房间已关闭' : '分享给朋友，一起入座'} <span aria-hidden="true">↗</span>
-          </small>
+            onClick={() => {
+              setActionError('');
+              setSuccess('');
+              setCopied(false);
+              void copyText(data.room.code)
+                .then(() => {
+                  setCopied(true);
+                  setSuccess('房间码已复制，分享给朋友一起入座。');
+                })
+                .catch(() => setActionError(`复制未成功，请手动复制房间码：${data.room.code}`));
+            }}
+          >
+            <span>{copied ? '已复制房间码' : '房间码 · 点击复制'}</span>
+            <strong>{data.room.code}</strong>
+            <small>
+              {ended ? '房间已关闭' : '分享给朋友，一起入座'} <span aria-hidden="true">↗</span>
+            </small>
           </button>
           {!ended ? (
             <button
@@ -500,14 +500,26 @@ function RhythmPanel({
 }: {
   data: RoomSnapshot;
   disabled: boolean;
-  onSave: (payload: { focusSeconds: number; breakSeconds: number }) => Promise<boolean>;
+  onSave: (payload: {
+    focusSeconds: number;
+    breakSeconds: number;
+    targetRounds: number | null;
+  }) => Promise<boolean>;
 }) {
   const [editing, setEditing] = useState(false);
   const [focus, setFocus] = useState(data.session.focusSeconds / 60);
   const [rest, setRest] = useState(data.session.breakSeconds / 60);
+  const [rounds, setRounds] = useState<number | null>(data.session.targetRounds);
   const save = async (event: FormEvent) => {
     event.preventDefault();
-    if (await onSave({ focusSeconds: focus * 60, breakSeconds: rest * 60 })) setEditing(false);
+    if (
+      await onSave({
+        focusSeconds: focus * 60,
+        breakSeconds: rest * 60,
+        targetRounds: rounds,
+      })
+    )
+      setEditing(false);
   };
   return (
     <section className="panel rhythm-panel">
@@ -525,7 +537,7 @@ function RhythmPanel({
         <button
           className="text-button"
           disabled={disabled}
-          onClick={() => void onSave({ focusSeconds: 45, breakSeconds: 15 })}
+          onClick={() => void onSave({ focusSeconds: 45, breakSeconds: 15, targetRounds: 1 })}
         >
           使用 45/15 秒演示节奏
         </button>
@@ -535,8 +547,10 @@ function RhythmPanel({
           <RhythmFields
             focus={focus}
             rest={rest}
+            rounds={rounds}
             setFocus={setFocus}
             setRest={setRest}
+            setRounds={setRounds}
             disabled={disabled}
           />
           <p className="muted">修改后，所有成员需要重新准备。</p>
@@ -557,6 +571,11 @@ function RhythmPanel({
               <span>{data.session.demoMode ? '秒休息 · 演示' : '分钟休息'}</span>
             </div>
           </div>
+          <p className="rhythm-rounds">
+            {data.session.targetRounds === null
+              ? `第 ${Math.max(1, data.session.roundNo)} 轮 · 无限循环`
+              : `${data.session.roundNo || 0} / ${data.session.targetRounds} 轮`}
+          </p>
           <p className="muted">先约定节奏，再一起开始。</p>
         </>
       )}

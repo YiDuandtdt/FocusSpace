@@ -22,6 +22,10 @@ export async function advanceSession(tx: Tx, roomId: string, at = new Date()) {
   let boundary = session.phaseEndAt;
   let startAt = boundary;
   let intervals: Prisma.PhaseIntervalCreateManyInput[] = [];
+  if (phase === 'FOCUS' && session.targetRounds && roundNo >= session.targetRounds) {
+    await finalizeSession(tx, roomId, 'ROUNDS_COMPLETED', session.phaseEndAt);
+    return true;
+  }
   // Compute boundaries in memory and insert in bounded batches. A long outage
   // must not require four database round trips for every missed phase.
   do {
@@ -38,6 +42,16 @@ export async function advanceSession(tx: Tx, roomId: string, at = new Date()) {
       startAt,
       endAt: boundary <= at ? boundary : null,
     });
+    if (
+      phase === 'FOCUS' &&
+      session.targetRounds &&
+      roundNo >= session.targetRounds &&
+      boundary <= at
+    ) {
+      if (intervals.length) await tx.phaseInterval.createMany({ data: intervals });
+      await finalizeSession(tx, roomId, 'ROUNDS_COMPLETED', boundary);
+      return true;
+    }
     if (intervals.length === 100) {
       await tx.phaseInterval.createMany({ data: intervals });
       intervals = [];
@@ -81,8 +95,7 @@ async function reconcileRoom(tx: Tx, roomId: string, at: Date) {
 export const advanceRoom = (roomId: string, at = new Date()) =>
   db.$transaction((tx) => reconcileRoom(tx, roomId, at), { timeout: 60000 });
 
-export async function finishSession(tx: Tx, roomId: string, reason: string, at = new Date()) {
-  await advanceSession(tx, roomId, at);
+async function finalizeSession(tx: Tx, roomId: string, reason: string, at: Date) {
   const room = await tx.room.findUniqueOrThrow({
     where: { id: roomId },
     include: { session: true, members: true },
@@ -104,6 +117,10 @@ export async function finishSession(tx: Tx, roomId: string, reason: string, at =
     data: { ready: false, connectionState: 'DISCONNECTED' },
   });
   await bump(tx, roomId);
+}
+export async function finishSession(tx: Tx, roomId: string, reason: string, at = new Date()) {
+  await advanceSession(tx, roomId, at);
+  await finalizeSession(tx, roomId, reason, at);
 }
 export async function sessionCommand(
   userId: string,

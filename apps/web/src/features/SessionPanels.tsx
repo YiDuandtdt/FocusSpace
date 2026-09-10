@@ -6,11 +6,12 @@ import type {
   RoomSnapshot,
   SessionSummary,
   Task,
+  Todo,
 } from '@focusspace/shared';
 import { useAuth } from '../auth';
 import { useDraft } from '../preferences';
 import { Modal, Notice } from '../components';
-import { errorMessage } from '../api';
+import { api, errorMessage } from '../api';
 import { RewardFeedback } from './GrowthFeedback';
 
 export function PhaseTimer({
@@ -66,6 +67,16 @@ export function PhaseTimer({
 }
 
 type Command = (type: RoomCommand, payload?: unknown) => Promise<void>;
+const flattenTodos = (items: Todo[], depth = 0): { item: Todo; depth: number }[] =>
+  items.flatMap((item) => [{ item, depth }, ...flattenTodos(item.children, depth + 1)]);
+const orderTasks = (
+  tasks: Task[],
+  parentId: string | null = null,
+  depth = 0,
+): { task: Task; depth: number }[] => {
+  const children = tasks.filter((task) => task.parentId === parentId);
+  return children.flatMap((task) => [{ task, depth }, ...orderTasks(tasks, task.id, depth + 1)]);
+};
 export function TaskPanel({
   tasks,
   roomId,
@@ -85,6 +96,14 @@ export function TaskPanel({
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [showRules, setShowRules] = useState(false);
+  const [showPicker, setShowPicker] = useState(false);
+  const [todos, setTodos] = useState<Todo[]>([]);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [parentTaskId, setParentTaskId] = useState('');
+  const [priority, setPriority] = useState<Task['priority']>('MEDIUM');
+  const [dueAt, setDueAt] = useState('');
+  const [labels, setLabels] = useState('');
+  const [showTaskDetails, setShowTaskDetails] = useState(false);
   const done = tasks.filter((t) => t.completed).length;
   async function run(type: RoomCommand, payload: unknown) {
     if (busy || disabled || ended) return false;
@@ -102,7 +121,53 @@ export function TaskPanel({
   }
   async function create(event: FormEvent) {
     event.preventDefault();
-    if (await run('task:create', { title })) setTitle('');
+    if (
+      await run('task:create', {
+        title,
+        parentTaskId: parentTaskId || null,
+        priority,
+        dueAt: dueAt ? new Date(`${dueAt}T23:59:00`).toISOString() : null,
+        labels: labels
+          .split(/[,，]/)
+          .map((label) => label.trim())
+          .filter(Boolean),
+      })
+    ) {
+      setTitle('');
+      setParentTaskId('');
+      setDueAt('');
+      setLabels('');
+      setShowTaskDetails(false);
+    }
+  }
+  async function openPicker() {
+    setError('');
+    try {
+      const data = await api<{ items: Todo[] }>('/users/me/todos');
+      setTodos(data.items);
+      setSelected(new Set());
+      setShowPicker(true);
+    } catch (e) {
+      setError(errorMessage(e));
+    }
+  }
+  async function addSelected() {
+    if (!selected.size || busy) return;
+    setBusy(true);
+    setError('');
+    try {
+      for (const todoId of selected) {
+        await api(`/users/me/todos/${todoId}/room`, {
+          method: 'POST',
+          body: { roomId, requestId: crypto.randomUUID() },
+        });
+      }
+      setShowPicker(false);
+    } catch (e) {
+      setError(errorMessage(e));
+    } finally {
+      setBusy(false);
+    }
   }
   return (
     <section className="panel task-panel">
@@ -118,6 +183,16 @@ export function TaskPanel({
           >
             ?
           </button>
+          {!ended ? (
+            <button
+              type="button"
+              className="text-button"
+              disabled={disabled || busy}
+              onClick={() => void openPicker()}
+            >
+              从清单加入
+            </button>
+          ) : null}
         </div>
       </div>
       {showRules ? (
@@ -133,19 +208,18 @@ export function TaskPanel({
       ) : null}
       <progress aria-label="我的任务完成进度" max={tasks.length || 1} value={done} />
       <ul className="task-list">
-        {tasks.map((task) => (
+        {orderTasks(tasks).map(({ task, depth }) => (
           <TaskRow
             key={task.id}
             draftKey={draftKey + ':' + task.id}
             task={task}
             disabled={disabled || busy || ended}
             run={run}
+            depth={depth}
           />
         ))}
       </ul>
-      {!tasks.length ? (
-        <p className="muted">写下一个小目标</p>
-      ) : null}
+      {!tasks.length ? <p className="muted">写下一个小目标</p> : null}
       {!ended ? (
         <form className="task-create" onSubmit={create}>
           <input
@@ -160,9 +234,126 @@ export function TaskPanel({
           <button className="button secondary" disabled={disabled || busy || !title.trim()}>
             添加任务
           </button>
+          <button
+            type="button"
+            className="text-button task-details-toggle"
+            aria-expanded={showTaskDetails}
+            onClick={() => setShowTaskDetails(!showTaskDetails)}
+          >
+            设置
+          </button>
+          {showTaskDetails ? (
+            <div className="task-create-details">
+              <label>
+                上级任务
+                <select
+                  value={parentTaskId}
+                  onChange={(event) => setParentTaskId(event.target.value)}
+                >
+                  <option value="">无（主任务）</option>
+                  {orderTasks(tasks)
+                    .filter(({ depth }) => depth < 5)
+                    .map(({ task, depth }) => (
+                      <option key={task.id} value={task.id}>
+                        {'　'.repeat(depth)}
+                        {task.title}
+                      </option>
+                    ))}
+                </select>
+              </label>
+              <label>
+                优先级
+                <select
+                  value={priority}
+                  onChange={(event) => setPriority(event.target.value as Task['priority'])}
+                >
+                  <option value="HIGH">高</option>
+                  <option value="MEDIUM">中</option>
+                  <option value="LOW">低</option>
+                </select>
+              </label>
+              <label>
+                截止日期
+                <input
+                  type="date"
+                  value={dueAt}
+                  onChange={(event) => setDueAt(event.target.value)}
+                />
+              </label>
+              <label>
+                标签
+                <input
+                  value={labels}
+                  onChange={(event) => setLabels(event.target.value)}
+                  placeholder="课程，复习"
+                />
+              </label>
+            </div>
+          ) : null}
         </form>
       ) : null}
       {error ? <Notice>{error}</Notice> : null}
+      {showPicker ? (
+        <Modal
+          className="todo-picker-dialog"
+          onCancel={() => setShowPicker(false)}
+          aria-labelledby="todo-picker-title"
+        >
+          <div className="panel-heading">
+            <div>
+              <span className="eyebrow">TODO LIST</span>
+              <h2 id="todo-picker-title">选择待办加入房间</h2>
+            </div>
+            <button className="text-button" onClick={() => setShowPicker(false)}>
+              ✕
+            </button>
+          </div>
+          <p className="muted">加入后，两处的完成状态会保持同步。子任务可独立选择。</p>
+          <ul className="todo-picker-list">
+            {flattenTodos(todos)
+              .filter(({ item }) => !item.completed)
+              .map(({ item, depth }) => {
+                const linked = item.linkedRoomId === roomId;
+                return (
+                  <li key={item.id} style={{ paddingLeft: 10 + Math.min(depth, 5) * 20 }}>
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={linked || selected.has(item.id)}
+                        disabled={linked}
+                        onChange={(event) =>
+                          setSelected((old) => {
+                            const next = new Set(old);
+                            if (event.target.checked) next.add(item.id);
+                            else next.delete(item.id);
+                            return next;
+                          })
+                        }
+                      />
+                      <span>{item.title}</span>
+                      {linked ? <small>已加入</small> : null}
+                    </label>
+                  </li>
+                );
+              })}
+          </ul>
+          {!flattenTodos(todos).some(({ item }) => !item.completed) ? (
+            <p className="muted">没有可加入的待办。</p>
+          ) : null}
+          <div className="dialog-actions">
+            <button className="button secondary" onClick={() => setShowPicker(false)}>
+              取消
+            </button>
+            <button
+              className="button primary"
+              disabled={!selected.size || busy}
+              onClick={() => void addSelected()}
+            >
+              加入 {selected.size || ''} 项
+            </button>
+          </div>
+        </Modal>
+      ) : null}
     </section>
   );
 }
@@ -171,11 +362,13 @@ function TaskRow({
   draftKey,
   disabled,
   run,
+  depth,
 }: {
   task: Task;
   draftKey: string;
   disabled: boolean;
   run: (type: RoomCommand, payload: unknown) => Promise<boolean>;
+  depth: number;
 }) {
   const [saved, setSaved] = useDraft(draftKey, {
     editing: false,
@@ -193,7 +386,10 @@ function TaskRow({
   }
   const changed = editing && version !== task.version;
   return (
-    <li className={`task-row ${editing ? 'task-row-editing' : ''}`}>
+    <li
+      className={`task-row ${editing ? 'task-row-editing' : ''}`}
+      style={{ paddingLeft: Math.min(depth, 5) * 18 }}
+    >
       <input
         type="checkbox"
         aria-label={`完成任务：${task.title}`}
@@ -249,7 +445,17 @@ function TaskRow({
           >
             {task.visibility === 'PUBLIC' ? '已公开' : '私有'}
           </button>
-          <span className={`task-title ${task.completed ? 'task-done' : ''}`}>{task.title}</span>
+          <span className={`task-title ${task.completed ? 'task-done' : ''}`}>
+            {task.title}
+            <small className="room-task-meta">
+              {task.todoId ? '清单同步 · ' : ''}
+              {task.priority === 'HIGH' ? '高优先级' : task.priority === 'LOW' ? '低优先级' : ''}
+              {task.dueAt
+                ? `${task.priority === 'MEDIUM' ? '' : ' · '}截止 ${new Date(task.dueAt).toLocaleDateString()}`
+                : ''}
+              {task.labels.map((label) => ` #${label}`).join('')}
+            </small>
+          </span>
           <div className="task-actions">
             <button
               className="text-button"
@@ -445,6 +651,7 @@ export function SummaryPanel({ summary }: { summary: SessionSummary }) {
     OWNER_ENDED: '房主主动结束',
     OWNER_LEFT: '房主离开',
     OWNER_DISCONNECTED: '房主断线超时',
+    ROUNDS_COMPLETED: '已完成设定轮数',
   };
   return (
     <section className="panel summary-panel">
@@ -488,6 +695,38 @@ export function SummaryPanel({ summary }: { summary: SessionSummary }) {
           <div>
             <strong>{r.studiedWith}</strong>
             <span>共同专注的搭子</span>
+          </div>
+        </div>
+      ) : null}
+      {summary.analysis.tasks.length ? (
+        <div className="session-analysis">
+          <div className="panel-heading">
+            <h3>本次数据分析</h3>
+            <Link className="text-button" to="/analytics">
+              查看完整统计 ↗
+            </Link>
+          </div>
+          <div className="session-analysis-grid">
+            <div>
+              <span>标签分布</span>
+              {summary.analysis.labels.slice(0, 4).map((item) => (
+                <p key={item.label}>
+                  <strong>#{item.label}</strong>
+                  <span>
+                    {Math.floor(item.focusSeconds / 60)} 分 · {item.tasksDone}/{item.tasksTotal}
+                  </span>
+                </p>
+              ))}
+            </div>
+            <div>
+              <span>任务推进</span>
+              {summary.analysis.tasks.slice(0, 4).map((task, index) => (
+                <p key={`${task.title}-${index}`}>
+                  <strong className={task.completed ? 'task-done' : ''}>{task.title}</strong>
+                  <span>{task.completed ? '已完成' : '待继续'}</span>
+                </p>
+              ))}
+            </div>
           </div>
         </div>
       ) : null}
