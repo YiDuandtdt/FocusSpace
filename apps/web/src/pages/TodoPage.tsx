@@ -1,9 +1,18 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type FormEvent,
+} from 'react';
 import { Link } from 'react-router-dom';
 import type { Todo } from '@focusspace/shared';
 import { api, errorMessage } from '../api';
 import { Notice } from '../components';
 import { useAuth } from '../auth';
+import { createRequestId } from '../requestId';
 
 const priorityText = { HIGH: '高', MEDIUM: '中', LOW: '低' } as const;
 const recurrenceText = { NONE: '不重复', DAILY: '每天', WEEKLY: '每周' } as const;
@@ -65,8 +74,8 @@ export function TodoPage() {
   const titleRef = useRef<HTMLInputElement>(null);
   const flat = useMemo(() => flatten(items), [items]);
 
-  async function load() {
-    setLoading(true);
+  const load = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     setError('');
     try {
       const data = await api<{ items: Todo[] }>('/users/me/todos');
@@ -74,12 +83,32 @@ export function TodoPage() {
     } catch (e) {
       setError(errorMessage(e));
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
-  }
+  }, []);
   useEffect(() => {
     void load();
-  }, []);
+    const refresh = () => void load(true);
+    const changed = () => refresh();
+    const stored = (event: StorageEvent) => {
+      if (event.key === 'focusspace:todos-changed') refresh();
+    };
+    const visible = () => {
+      if (document.visibilityState === 'visible') refresh();
+    };
+    window.addEventListener('focus', refresh);
+    window.addEventListener('storage', stored);
+    window.addEventListener('focusspace:todos-changed', changed);
+    document.addEventListener('visibilitychange', visible);
+    const interval = currentRoomId ? window.setInterval(refresh, 3000) : undefined;
+    return () => {
+      window.removeEventListener('focus', refresh);
+      window.removeEventListener('storage', stored);
+      window.removeEventListener('focusspace:todos-changed', changed);
+      document.removeEventListener('visibilitychange', visible);
+      if (interval) window.clearInterval(interval);
+    };
+  }, [currentRoomId, load]);
 
   async function create(event: FormEvent) {
     event.preventDefault();
@@ -152,7 +181,7 @@ export function TodoPage() {
     try {
       await api(`/users/me/todos/${item.id}/room`, {
         method: 'POST',
-        body: { roomId: currentRoomId, requestId: crypto.randomUUID() },
+        body: { roomId: currentRoomId, requestId: createRequestId() },
       });
       setNotice(`“${item.title}”已加入当前房间，完成状态会双向同步。`);
       await load();

@@ -13,6 +13,7 @@ import { useDraft } from '../preferences';
 import { Modal, Notice } from '../components';
 import { api, errorMessage } from '../api';
 import { RewardFeedback } from './GrowthFeedback';
+import { createRequestId } from '../requestId';
 
 export function PhaseTimer({
   session,
@@ -111,6 +112,12 @@ export function TaskPanel({
     setError('');
     try {
       await command(type, payload);
+      if (type === 'task:update' || type === 'task:delete') {
+        window.dispatchEvent(new Event('focusspace:todos-changed'));
+        try {
+          localStorage.setItem('focusspace:todos-changed', String(Date.now()));
+        } catch {}
+      }
       return true;
     } catch (e) {
       setError(errorMessage(e));
@@ -156,12 +163,16 @@ export function TaskPanel({
     setBusy(true);
     setError('');
     try {
-      for (const todoId of selected) {
+      const selectedIds = flattenTodos(todos)
+        .map(({ item }) => item.id)
+        .filter((todoId) => selected.has(todoId));
+      for (const todoId of selectedIds) {
         await api(`/users/me/todos/${todoId}/room`, {
           method: 'POST',
-          body: { roomId, requestId: crypto.randomUUID() },
+          body: { roomId, requestId: createRequestId() },
         });
       }
+      await command('room:sync', {});
       setShowPicker(false);
     } catch (e) {
       setError(errorMessage(e));

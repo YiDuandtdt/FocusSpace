@@ -54,6 +54,12 @@ try {
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
   const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  await context.addInitScript(() => {
+    Object.defineProperty(globalThis.crypto, 'randomUUID', {
+      configurable: true,
+      value: undefined,
+    });
+  });
   const page = await context.newPage();
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
@@ -103,9 +109,22 @@ try {
   await dialog.getByRole('button', { name: '加入 1 项' }).click();
   await expect(page.getByText('完成 UI 验收', { exact: true })).toBeVisible();
   await expect(page.getByText(/清单同步/)).toBeVisible();
+  const roomTask = page.getByRole('checkbox', { name: '完成任务：完成 UI 验收' });
+  const todoPage = await context.newPage();
+  await todoPage.goto(`${base}/todos`);
+  const originalTodoRow = todoPage.locator('.todo-items li').filter({ hasText: '截止 2026/9/18' });
+  const listTodo = originalTodoRow.getByRole('checkbox', { name: '完成：完成 UI 验收' });
+  await expect(listTodo).not.toBeChecked();
+  await roomTask.click();
+  await expect(roomTask).toBeChecked();
+  await expect(listTodo).toBeChecked();
+  await listTodo.click();
+  await expect(listTodo).not.toBeChecked();
+  await expect(roomTask).not.toBeChecked();
+  await todoPage.close();
   assert.deepEqual(errors, [], `browser errors: ${errors.join('\n')}`);
   console.log(
-    'PASS navigation, todo calendar, analytics, leaderboard, infinite rounds and room todo picker UI',
+    'PASS navigation, todo calendar, analytics, leaderboard, infinite rounds and live bidirectional room sync UI',
   );
   await context.close();
 } finally {
