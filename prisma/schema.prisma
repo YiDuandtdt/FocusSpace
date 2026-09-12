@@ -1,0 +1,301 @@
+generator client {
+  provider = "prisma-client-js"
+}
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+enum Role {
+  USER
+  ADMIN
+}
+enum Phase {
+  LOBBY
+  FOCUS
+  BREAK
+  ENDED
+}
+enum ConnectionState {
+  CONNECTED
+  DISCONNECTED
+}
+model User {
+  id           String @id @default(cuid())
+  username     String @unique
+  passwordHash String
+  nickname     String
+  avatarId     String @default("lake")
+  avatarImage  Bytes?
+  avatarVersion Int @default(0)
+  characterConfig String @default("{\"version\":1,\"skin\":\"skin.cream\",\"hair\":\"hair.crop\",\"hairColor\":\"hair.ink\",\"outfit\":\"outfit.sage\",\"accessory\":\"accessory.none\"}")
+  onboarding String @default("PENDING")
+  personalSpace PersonalSpace?
+  role         Role @default(USER)
+  bannedAt     DateTime?
+  banReason    String?
+  createdAt    DateTime @default(now())
+  authSessions AuthSession[]
+  ownedRooms   Room[]
+  memberships  RoomMember[]
+  receipts     CommandReceipt[]
+  tasks        Task[]
+  messages     ChatMessage[]
+  presence     PresenceInterval[]
+  records      StudyRecord[]
+  todos        Todo[]
+}
+model AuthSession {
+  id        String @id @default(cuid())
+  tokenHash String @unique
+  userId    String
+  user      User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime @default(now())
+  @@index([userId])
+}
+model Room {
+  id        String @id @default(cuid())
+  code      String @unique
+  name      String
+  ownerId   String
+  owner     User @relation(fields: [ownerId], references: [id])
+  sessionId String @unique
+  session   StudySession @relation(fields: [sessionId], references: [id])
+  visibility String @default("PRIVATE")
+  theme      String @default("rain")
+  spaceSnapshot String?
+  spaceOwnerId String?
+  delistedAt DateTime?
+  capacity  Int @default(8)
+  revision  Int @default(1)
+  createdAt DateTime @default(now())
+  members   RoomMember[]
+  messages  ChatMessage[]
+  @@index([visibility, createdAt])
+}
+model StudySession {
+  rewardRules String?
+  id           String @id @default(cuid())
+  phase        Phase @default(LOBBY)
+  roundNo      Int @default(0)
+  focusSeconds Int
+  breakSeconds Int
+  targetRounds Int?
+  phaseStartAt DateTime?
+  phaseEndAt   DateTime?
+  startedAt    DateTime?
+  endedAt      DateTime?
+  endReason    String?
+  feedbackVersion Int @default(1)
+  createdAt    DateTime @default(now())
+  room         Room?
+  intervals    PhaseInterval[]
+  presence     PresenceInterval[]
+  tasks        Task[]
+  messages     ChatMessage[]
+  records      StudyRecord[]
+}
+model PhaseInterval {
+  id        String @id @default(cuid())
+  sessionId String
+  session   StudySession @relation(fields: [sessionId], references: [id])
+  roundNo   Int
+  phase     Phase
+  startAt   DateTime
+  endAt     DateTime?
+  @@unique([sessionId, roundNo, phase])
+}
+model PresenceInterval {
+  id        String @id @default(cuid())
+  sessionId String
+  session   StudySession @relation(fields: [sessionId], references: [id])
+  userId    String
+  user      User @relation(fields: [userId], references: [id])
+  startAt   DateTime
+  endAt     DateTime?
+  endReason String?
+  @@index([sessionId, userId])
+}
+model Task {
+  id          String @id @default(cuid())
+  sessionId   String
+  session     StudySession @relation(fields: [sessionId], references: [id])
+  userId      String
+  user        User @relation(fields: [userId], references: [id])
+  todoId      String?
+  todo        Todo? @relation(fields: [todoId], references: [id], onDelete: SetNull)
+  parentId    String?
+  parent      Task? @relation("TaskTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children    Task[] @relation("TaskTree")
+  title       String
+  priority    String @default("MEDIUM")
+  dueAt       DateTime?
+  labels      String @default("[]")
+  visibility  String @default("PRIVATE")
+  firstCompletedRound Int?
+  completed   Boolean @default(false)
+  completedAt DateTime?
+  version     Int @default(1)
+  createdAt   DateTime @default(now())
+  @@index([sessionId, userId])
+  @@index([parentId])
+  @@index([todoId])
+  @@unique([sessionId, userId, todoId])
+}
+
+model Todo {
+  id          String @id @default(cuid())
+  userId      String
+  user        User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parentId    String?
+  parent      Todo? @relation("TodoTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children    Todo[] @relation("TodoTree")
+  title       String
+  completed   Boolean @default(false)
+  completedAt DateTime?
+  priority    String @default("MEDIUM")
+  dueAt       DateTime?
+  scheduledStart DateTime?
+  scheduledEnd DateTime?
+  labels      String @default("[]")
+  recurrence  String @default("NONE")
+  seriesId    String?
+  version     Int @default(1)
+  archivedAt  DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  roomTasks   Task[]
+  @@index([userId, archivedAt, dueAt])
+  @@index([parentId])
+  @@index([seriesId])
+}
+model ChatMessage {
+  id        String @id @default(cuid())
+  roomId    String
+  room      Room @relation(fields: [roomId], references: [id])
+  sessionId String
+  session   StudySession @relation(fields: [sessionId], references: [id])
+  userId    String
+  user      User @relation(fields: [userId], references: [id])
+  removedAt DateTime?
+  content   String
+  createdAt DateTime @default(now())
+  requestId String
+  @@unique([userId, requestId])
+  @@index([sessionId, createdAt])
+  @@index([userId, createdAt])
+  @@index([createdAt])
+}
+model StudyRecord {
+  rewardState String @default("LEGACY")
+  rewardFacts String?
+  settledAt DateTime?
+  id              String @id @default(cuid())
+  sessionId       String
+  session         StudySession @relation(fields: [sessionId], references: [id])
+  userId          String
+  user            User @relation(fields: [userId], references: [id])
+  focusSeconds    Int
+  roundsCompleted Int
+  tasksDone       Int
+  tasksTotal      Int
+  studiedWith     Int
+  @@unique([sessionId, userId])
+  @@index([userId, id])
+}
+model RoomMember {
+  id              String @id @default(cuid())
+  roomId          String
+  room            Room @relation(fields: [roomId], references: [id])
+  userId          String
+  user            User @relation(fields: [userId], references: [id])
+  seatIndex       Int
+  ready           Boolean @default(false)
+  afk             Boolean @default(false)
+  connectionState ConnectionState @default(DISCONNECTED)
+  joinedAt        DateTime @default(now())
+  leftAt          DateTime?
+  lastSeenAt      DateTime @default(now())
+  reconnectDeadlineAt DateTime?
+  @@unique([roomId, userId])
+  @@index([userId, leftAt])
+  @@index([roomId, leftAt])
+}
+model CommandReceipt {
+  id          String @id @default(cuid())
+  userId      String
+  user        User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  requestId   String
+  commandType String
+  payloadHash String
+  result      String
+  roomId      String?
+  createdAt   DateTime @default(now())
+  @@unique([userId, requestId])
+  @@index([createdAt])
+}
+
+model AdminAudit {
+  id String @id @default(cuid())
+  actorId String
+  action String
+  targetId String
+  reason String
+  createdAt DateTime @default(now())
+  result String
+  summary String
+  requestId String
+  @@index([createdAt, id])
+}
+
+model PersonalSpace {
+  userId String @id
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  config String
+  revision Int @default(1)
+  updatedAt DateTime @updatedAt
+}
+
+model GrowthAccount {
+  userId String @id
+  xp Int @default(0)
+  coins Int @default(0)
+  level Int @default(1)
+}
+model GrowthItem {
+  id String @id
+  price Int
+  minLevel Int
+  status String @default("ACTIVE")
+}
+model OwnedAsset {
+  userId String
+  assetId String
+  source String
+  createdAt DateTime @default(now())
+  @@id([userId, assetId])
+}
+model GrowthLedger {
+  id String @id @default(cuid())
+  key String @unique
+  userId String
+  source String
+  recordId String? @unique
+  assetId String?
+  ruleVersion Int
+  xp Int
+  coins Int
+  xpAfter Int
+  coinsAfter Int
+  rewardDay String?
+  goalBonus Boolean @default(false)
+  togetherBonus Boolean @default(false)
+  reason String
+  createdAt DateTime @default(now())
+  @@index([userId, createdAt])
+}
+model GrowthSettings {
+  id String @id
+  rules String
+}

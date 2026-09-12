@@ -1,0 +1,51 @@
+{
+  "name": "focusspace",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "setup": "node scripts/setup.mjs && prisma generate && node --env-file=.env scripts/init-db.mjs && prisma migrate deploy && npm run build -w @focusspace/shared",
+    "dev": "concurrently -k -n shared,server,web \"npm run dev -w @focusspace/shared\" \"npm run dev -w @focusspace/server\" \"npm run dev -w @focusspace/web\"",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "build": "npm run build -w @focusspace/shared && npm run build -w @focusspace/server && npm run build -w @focusspace/web",
+    "start": "node --env-file=.env scripts/start.mjs",
+    "db:deploy": "node --env-file=.env scripts/init-db.mjs && prisma migrate deploy",
+    "db:backup": "node --env-file=.env scripts/backup-db.mjs",
+    "demo:init": "node --env-file=.env scripts/init-demo.mjs",
+    "test:lan": "node scripts/verify-lan-http.mjs",
+    "test:delivery": "tsx scripts/verify-delivery.ts",
+    "db:migrate": "prisma migrate dev",
+    "db:studio": "prisma studio",
+    "test:flow": "tsx scripts/verify-flow.ts",
+    "test:session": "tsx scripts/verify-session.ts",
+    "test:space": "tsx scripts/verify-space.ts",
+    "test:personal": "tsx scripts/verify-personal.ts",
+    "test:growth": "tsx scripts/verify-growth.ts",
+    "demo:growth": "tsx scripts/demo-growth.ts",
+    "audio:generate": "node scripts/generate-ambience.mjs",
+    "audio:prepare": "node scripts/prepare-ambience.mjs",
+    "test:feedback": "tsx scripts/verify-feedback.ts",
+    "test:planning": "tsx scripts/verify-planning.ts",
+    "test:planning-ui": "tsx scripts/verify-planning-ui.ts",
+    "admin:init": "node --env-file=.env scripts/init-admin.mjs",
+    "test:admin": "tsx scripts/verify-admin.ts",
+    "test:ui": "tsx scripts/verify-ui.ts",
+    "start:local": "node --env-file=.env scripts/start-local.mjs"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.55.0",
+    "@types/node": "24.3.0",
+    "concurrently": "9.2.1",
+    "prettier": "3.6.2",
+    "prisma": "6.19.0",
+    "tsx": "4.20.5",
+    "typescript": "5.9.2"
+  }
+}

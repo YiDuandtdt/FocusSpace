@@ -1,0 +1,43 @@
+{
+  "upstream": "rafaelmardojai/blanket",
+  "commit": "9d229d2be7cb6619135d55ff9e49926e40298686",
+  "processing": "First 24 seconds, -25 LUFS / -3 dBTP normalization, 2-second tail/head crossfade, 22-second stereo MP3 at 44.1 kHz / 96 kbps",
+  "tracks": [
+    {
+      "id": "rain",
+      "source": "rain.ogg",
+      "inputSha256": "b84c1daf259a24283be40b7663656d17676df4eb60c1e0332820570db891848a",
+      "file": "rain.mp3",
+      "sha256": "14369a2fccaf4680e33b0968706e9d7eedf62f4325a3a57b41957f8dae3dadcb",
+      "bytes": 264926,
+      "durationSeconds": 22
+    },
+    {
+      "id": "fire",
+      "source": "fireplace.ogg",
+      "inputSha256": "a6395379a32c2dc30dd870c4571ded4a5311435aacfe354b3a82a9b3ab98620b",
+      "file": "fire.mp3",
+      "sha256": "e2e1cc4e17540b74519a8e0c26e132f0f3b10f264e82dacb3267010147d977cf",
+      "bytes": 264926,
+      "durationSeconds": 22
+    },
+    {
+      "id": "birds",
+      "source": "birds.ogg",
+      "inputSha256": "e59b19c2a377d5835d07e7ec8f8c876b9f40ae7f703738b55d616ef96a1638b2",
+      "file": "birds.mp3",
+      "sha256": "5712eaf756ea8c58b28c4a3bd1ad4ce3b22150aacd61154d84003634f25f59a8",
+      "bytes": 264926,
+      "durationSeconds": 22
+    },
+    {
+      "id": "stream",
+      "source": "stream.ogg",
+      "inputSha256": "ce372c5db561168636647dd7d4aac39ef1785ae5d415ad0e589186ce1b7c5796",
+      "file": "stream.mp3",
+      "sha256": "36318a94025ec5ead85213b73004ac9e1e8c174ed6e50c873a76d1e987434988",
+      "bytes": 264926,
+      "durationSeconds": 22
+    }
+  ]
+}
