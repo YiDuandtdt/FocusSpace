@@ -1,149 +1,191 @@
+<div align="center">
+
 # FocusSpace
 
-计划与复盘升级（2026-09-10）：导航栏新增[待办清单](http://localhost:3001/todos)、[数据统计](http://localhost:3001/analytics)和[排行榜](http://localhost:3001/leaderboard)。待办支持优先级、截止日期、标签、子任务、日程、月历及每日/每周重复；可多选加入当前房间，并与房间任务双向同步完成状态。创建房间可选固定轮数或无限轮。验证：`npm run test:planning`、`npm run test:planning-ui`。规则和限制见[本阶段交付说明](Doc/阶段交付_计划统计与排行榜.md)。
+**各自学习，一起专注。**
 
-学习成长与装扮升级（2026-09-10）：[用户入口](http://localhost:3001/growth)、[管理员入口](http://localhost:3001/admin/growth)。有效专注按服务端记录获得经验与学习币，兑换永久资产并用于个人形象、自习室；结束 Summary 展示到账结果。此阶段明确覆盖原「暂不做货币和装扮」范围。完整规则、增量升级、隔离演示及限制见 [本阶段交付说明](Doc/阶段交付_学习成长与装扮.md)。验证：`npm run test:growth`；独立演示：`npm run demo:growth`（专用数据库与 127.0.0.2:4319，随机账号密码打印在终端）。
+一个温暖、安静的多人在线共学空间，将专注计时、任务管理、实时陪伴与个人成长放进同一间虚拟自习室。
 
-个人空间升级（2026-09-09）：首页/顶部「个人空间」可编辑长期保存的虚拟形象与自习室，账号头像独立上传；新共学复制发起人的布置快照。见 [v1.1 PRD](Doc/FocusSpace_产品需求文档_PRD_v1.1.md) 与 [本阶段交付、迁移及截图](Doc/阶段交付_个人空间与卡通低模.md)。升级前先备份数据库，再 `npm run setup`、`npm run build`。当前体验入口 `http://localhost:3001/space`；如切换到 `npm run start:local` 的 3002 端口，先停止原服务，同一数据库只运行一个实例。定向验证：`npm run test:personal`。
+`React 19` · `TypeScript` · `Three.js` · `Express` · `Socket.IO` · `Prisma` · `SQLite`
 
-各自学习，一起专注。已完成共学、学习反馈、公开房间和管理员系统；第七阶段新增三种同步房间主题、四条真实环境录音、专注/全屏视图及移动端体验完善。实现依据见 `Doc` 中的 PRD 与开发设计文档。
+</div>
 
-本轮体验：`npm run setup` → `npm run build` → `npm run start:local`，打开 [http://localhost:3002](http://localhost:3002)。房主在大厅选择「窗边雨天 / 暖灯夜读 / 明亮图书馆」，开始后主题固定；个人环境声默认关闭。完整功能、演示路线、验证与限制见 [第七阶段交付说明](Doc/阶段交付_沉浸体验与产品交付.md)。
+![FocusSpace 个人自习室](Doc/screenshots/personal-space/02-personal-room.png)
 
-## 环境与开发启动
+## 为什么是 FocusSpace
 
-需要 Node.js **22.12+**（本次验证为 24.19.0）、npm，以及可写的本地磁盘；无需安装数据库服务。以下命令均在项目根目录执行：
+FocusSpace 不只是一个番茄钟。你可以布置自己的 3D 自习室、带着待办进入共学房间，在同步的专注与休息节奏中感受伙伴的在线状态，并在结束后查看真实有效的学习记录。
 
-```powershell
+## 核心功能
+
+| 模块 | 能力 |
+| --- | --- |
+| 共学房间 | 公开或私有房间、房间码与邀请链接、最多 8 人实时在线、房主转交与异常接任 |
+| 专注流程 | 可配置专注/休息时长、固定或无限轮次、断线重连、服务重启恢复、AFK 状态 |
+| 任务计划 | 优先级、截止日期、标签、子任务、日程、重复规则，可将待办批量加入当前房间 |
+| 沉浸空间 | Three.js 卡通低模自习室、个人角色与房间布置、三种主题、独立环境音与全屏视图 |
+| 实时互动 | 成员状态、公开任务进度、轻量鼓励、休息阶段聊天、最近消息恢复 |
+| 学习成长 | 有效专注结算、经验与学习币、永久装扮、成长记录与学习总结 |
+| 数据洞察 | 日/周/月趋势、任务与标签分析、学习历史、周榜与等级榜 |
+| 管理后台 | 用户与房间管理、内容移除、成长规则、补偿流水及审计记录 |
+
+## 快速开始
+
+### 环境要求
+
+- Node.js **22.12+**
+- npm
+- 可写的本地磁盘；无需单独安装数据库服务
+
+### 本地开发
+
+```bash
 npm ci
 npm run setup
 npm run dev
 ```
 
-访问 [http://localhost:5173](http://localhost:5173)。`setup` 只在缺少 `.env` 时复制示例，生成 Prisma Client、建立数据库目录、应用已有迁移并构建共享包；重复执行保留配置和数据。Vite 代理 `/api`、`/socket.io` 到 `.env` 的 `PORT`。始终使用同一个主机名，`localhost` 与 `127.0.0.1` 不共享登录 Cookie。
+浏览器打开 [http://localhost:5173](http://localhost:5173)。
 
-## 生产启动与更新
+`setup` 会在缺少 `.env` 时复制配置模板、生成 Prisma Client、创建 SQLite 数据目录、应用迁移并构建共享包。重复执行不会清空现有配置和数据。
 
-首次安装同样先执行 `npm ci`、`npm run setup`，再运行：
+### 本地生产运行
 
-```powershell
-npm run typecheck
+```bash
+npm ci
+npm run setup
 npm run build
 npm start
 ```
 
-访问 [http://localhost:3001](http://localhost:3001)。`npm start` 设置生产模式，由同一个 Node 进程提供页面、音频、HTTP API 和 Socket.IO，支持房间与 Summary 深链接刷新；缺少构建产物会明确报错。端口被占用时停止原服务，或修改 `PORT` 和 `APP_ORIGINS`。停止服务使用 Ctrl+C。
+浏览器打开 [http://localhost:3001](http://localhost:3001)。生产模式由同一个 Node.js 进程提供前端页面、HTTP API、Socket.IO 和静态资源。
 
-更新前先备份、停止旧进程，再执行 `npm ci`、`npm run setup`、`npm run build`、`npm start`。保留 `.env` 和数据库目录，**不要使用 migrate reset、db push --force-reset 或删除数据库**。第六阶段迁移新增账号封禁、房间可见性/下架、消息移除和审计，旧房间默认私有；第五阶段迁移新增任务公开级别、本轮首次完成元数据和反馈版本标记；旧任务保留且默认私有，旧场次不补造首次完成轮次，不重建或清空数据库。原有恢复迁移继续保留。
+> 请始终使用同一个主机名访问；`localhost` 与 `127.0.0.1` 不共享登录 Cookie。
 
-单独应用已提交的增量迁移：
+## Windows 局域网共学
 
-```powershell
-npm run db:deploy
-```
+双击根目录的 `Start-FocusSpace.cmd`。启动器会识别本机 IPv4 地址、更新允许来源、安装依赖、初始化数据库、构建并启动服务。把窗口中显示的网址分享给同一 Wi-Fi 或局域网内的伙伴即可。
 
-开发新迁移用 `npm run db:migrate -- --name <名称>`，提交生成的 `prisma/migrations`。`db:migrate` 用于开发，生产只用 `setup` 或 `db:deploy`。Windows 如遇 Prisma 引擎文件占用，先停止本项目旧 Node 服务再执行 `setup`。
+停止服务时双击 `Stop-FocusSpace.cmd`。校园网或访客 Wi-Fi 可能启用设备隔离，从而阻止设备互访；此入口也不会自动提供公网地址。
 
-## 配置与持久化
+## 配置
 
-`.env.example` 是配置模板；实际 `.env`、数据库、备份和验证产物均不提交 Git。默认数据库是 `prisma/data/focusspace.db`，独立于 `dist`，构建和重启不会清空。正式部署建议将 `DATABASE_URL` 指向应用更新目录之外的持久化目录。
+首次运行会由 `.env.example` 生成 `.env`：
 
-| 变量                  | 默认值 / 用途                                                                                                                                     |
-| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `DATABASE_URL`        | `file:./data/focusspace.db`，相对 `prisma/`；可用绝对路径，如 `file:D:/FocusSpaceData/focusspace.db` 或 `file:/srv/focusspace-data/focusspace.db` |
-| `HOST` / `PORT`       | `127.0.0.1` / `3001`；需要对外监听时显式设 `HOST=0.0.0.0`                                                                                         |
-| `APP_ORIGINS`         | 逗号分隔的完整浏览器来源；示例包含本地开发与生产。改端口、域名后须同步修改                                                                        |
-| `COOKIE_SECURE`       | 本地 HTTP 为 `false`，HTTPS 为 `true`                                                                                                             |
-| `SESSION_DAYS`        | 登录有效期，默认 7 天                                                                                                                             |
-| `DISCONNECT_GRACE_MS` | 断线保留时间，默认 60000 毫秒；范围 1000–300000                                                                                                   |
-| `DEMO_MODE`           | 默认 `false`；`true` 开放已有的 45/15 秒节奏和显式演示账号初始化                                                                                  |
+| 变量 | 默认值 | 说明 |
+| --- | --- | --- |
+| `DATABASE_URL` | `file:./data/focusspace.db` | SQLite 地址，相对路径从 `prisma/` 解析 |
+| `HOST` | `127.0.0.1` | 服务监听地址；局域网使用时设为 `0.0.0.0` |
+| `PORT` | `3001` | 生产服务端口 |
+| `APP_ORIGINS` | 本地开发与生产地址 | 允许访问 API 的完整浏览器来源，多个值用逗号分隔 |
+| `COOKIE_SECURE` | `false` | HTTPS 部署时设为 `true` |
+| `SESSION_DAYS` | `7` | 登录有效期（天） |
+| `DISCONNECT_GRACE_MS` | `60000` | 断线保留时间，支持 1000–300000 毫秒 |
+| `DEMO_MODE` | `false` | 开启 45/15 秒演示节奏及演示账号初始化 |
 
-仅运行 **一个服务进程**，不使用 cluster、多副本或多个进程共享数据库。HTTPS 反向代理需转发 WebSocket Upgrade，设置大于心跳周期的连接超时，并配置真实网页来源。当前没有公网部署目标，交付本地生产运行及部署文件。
+公网部署时建议将 `DATABASE_URL` 指向代码更新目录之外的持久化位置，并在 HTTPS 反向代理中正确转发 WebSocket Upgrade。当前架构面向**单进程、单实例 SQLite**，请勿用多个服务进程共享同一数据库。
 
-## 两人短演示
+## 演示与管理
 
-先在 `.env` 设置 `DEMO_MODE=true`，执行并保存终端显示的新账号密码：
+### 两人快速演示
 
-```powershell
+先在 `.env` 中设置 `DEMO_MODE=true`，然后运行：
+
+```bash
 npm run demo:init
 npm start
 ```
 
-命令创建 `focus_demo_1`、`focus_demo_2`、`focus_demo_3` 三个普通用户，每人使用独立随机密码。已有同名账号会跳过，不修改密码、房间或记录，不创建管理员。需要另一组时执行 `npm run demo:init -- classroom`。关闭演示开关不会删除这些账号；正式模式仍可正常注册。
+命令会创建三个使用随机密码的普通演示账号，账号与密码会显示在终端。使用普通窗口与无痕窗口分别登录，即可模拟独立用户创建房间、加入、准备、专注、休息与结算的完整流程。
 
-1. 用两个独立浏览器配置或普通窗口与无痕窗口登录账号 1、2（可加第三人）。普通标签页共享 Cookie，不能模拟独立账号。
-2. A 创建“期末复习房”，点击「使用 45/15 秒演示节奏」；B 输入房间码加入。两端各添加一项任务，点击准备，A 开始共学。
-3. Focus 中 B 完成任务，A 立即看到公开进度；聊天保持锁定。A 点击播放雨声，B 的声音不受影响；B 刷新，恢复同一轮及剩余时间。
-4. 45 秒后进入 Break，B 发一条消息；15 秒后自动进入第 2 轮 Focus。
-5. A 结束共学，两端查看结果；点击「打开已保存结果」并刷新。返回「我的空间」可以创建或加入下一间房。
+### 初始化管理员
 
-演示通常约 2 分钟。服务端重启演练请使用独立数据库：可直接运行下述 `test:delivery`，它不会触碰日常数据。
+先注册一个普通账号，再执行：
 
-## 恢复与数据保留
+```bash
+npm run admin:init -- <用户名> --confirm
+```
 
-- 服务重启按原阶段边界追赶，不重置计时。旧个人参与区间按最后持久化心跳关闭，停机时间不计入专注；成员重新连接确认后才继续个人计时。
-- 重启时原在线成员获得一次恢复宽限，截止时间持久化；原已断线成员沿用原截止时间，反复重启不续期。房主超时先由在线非 AFK 成员接任，无人可接任时才按截止时间结束，结算事务和唯一键防止重复结果。
-- 数据库失败时不显示虚假成功、不误退出账号或移除成员；输入保留，页面可重试连接、提交或读取 Summary。失败的断线写入会自动重试，先关闭旧参与区间再允许重连。
-- 聊天及其幂等回执正文超过 24 小时后清理，回执保留过期标记以阻止重放。已结束房间的操作凭据在结束及请求都超过 7 天后清理；活动房间的凭据保留。清理在启动时及每分钟执行。到期登录令牌同时清理。
-- 账号、房间、任务、阶段、参与区间与结算长期保留；本期没有自动删除学习记录的规则。
+重新登录后访问 `/admin`。项目不提供默认管理员账号或密码。
 
-## 备份与恢复
+## 常用命令
 
-运行中或停机后均可执行一致性备份；备份包含已提交的 WAL 数据，输出为独立 SQLite 文件。已有目标文件不会覆盖：
+| 命令 | 用途 |
+| --- | --- |
+| `npm run dev` | 启动前端、服务端与共享包的开发模式 |
+| `npm run typecheck` | 检查所有工作区的 TypeScript 类型 |
+| `npm run build` | 构建完整生产版本 |
+| `npm start` | 启动生产服务，默认端口 3001 |
+| `npm run start:local` | 仅本机启动生产服务，固定使用 3002 端口 |
+| `npm run db:deploy` | 应用已提交的数据库迁移 |
+| `npm run db:backup` | 创建一致性 SQLite 备份 |
+| `npm run db:studio` | 打开 Prisma Studio |
+| `npm run test:delivery` | 验证生产入口、恢复、核心共学流程与资源 |
+| `npm run test:planning` | 验证待办、统计与排行榜 |
+| `npm run test:growth` | 验证成长与装扮流程 |
+| `npm run test:admin` | 验证公开房间与管理后台 |
 
-```powershell
+完整脚本请查看根目录的 [`package.json`](package.json)。
+
+## 数据与更新
+
+默认数据库位于 `prisma/data/focusspace.db`，不会因构建或重启而清空。更新项目前建议先备份并停止旧服务：
+
+```bash
 npm run db:backup
-# 或显式指定新文件名
-npm run db:backup -- backups/before-update.db
+npm ci
+npm run setup
+npm run build
+npm start
 ```
 
-恢复时停止应用，将备份复制到一个**新的**数据库路径，例如：
+请保留 `.env` 与数据库目录。生产环境只使用 `npm run setup` 或 `npm run db:deploy` 应用迁移；不要执行 `migrate reset`、强制 `db push` 或直接删除数据库。
 
-```powershell
-Copy-Item -LiteralPath .\backups\before-update.db -Destination .\prisma\data\restored.db
+## 项目结构
+
+```text
+FocusSpace/
+├── apps/
+│   ├── web/          # React、Vite 与 Three.js 前端
+│   └── server/       # Express、Socket.IO 服务端
+├── packages/shared/  # 前后端共享类型、校验与业务模型
+├── prisma/           # 数据模型与增量迁移
+├── scripts/          # 启动、备份、演示及端到端验证脚本
+└── Doc/              # PRD、设计说明、阶段交付与截图
 ```
 
-先确认目标 `restored.db` 不存在；将 `.env` 的 `DATABASE_URL` 改为 `file:./data/restored.db`，执行 `npm run db:deploy`、`npm start`。确认账号和结果后再决定如何保留旧库。不要把备份覆盖到还在使用或残留 WAL 的旧库上。手工文件备份必须停机后复制整个数据目录，不能运行中只复制主 `.db` 而遗漏 WAL。备份含账号摘要、任务和聊天，应按应用数据保管。
+## 技术栈
 
-## 验证与资源
+- **前端：** React 19、React Router、Vite、Three.js
+- **后端：** Node.js、Express、Socket.IO、Zod
+- **数据：** Prisma、SQLite（WAL）
+- **工程：** TypeScript、npm workspaces、Playwright、Prettier
 
-```powershell
+## 验证
+
+提交前建议至少运行：
+
+```bash
 npm run typecheck
 npm run build
 npm run test:delivery
 ```
 
-`test:delivery` 创建独立 `.tmp/delivery-*` 数据库和空闲端口，使用与 `npm start` 一致的生产入口，验证重启、故障补偿、两浏览器 45/15 秒核心流程、3D/音频资源、导航、数据保留与备份恢复，并保存截图和结果。Windows 自动使用已安装 Edge；其他机器先执行 `npx playwright install chromium`。测试会停止自己的进程，不停止日常服务。已有 `test:flow`、`test:session`、`test:space` 保留供对应能力变更时使用，不要求每次全量重复。
+端到端验证使用独立的临时数据库和空闲端口，不会触碰日常数据。Windows 会优先使用已安装的 Edge；其他平台如缺少浏览器，可先执行 `npx playwright install chromium`。
 
-3D 家具、Avatar 和三种主题均复用本项目几何体，无外部模型、图片或字体；Three.js 使用 MIT 许可。当前四种声音为开放许可的真实录音：雨声（CC BY 4.0）、炉火（Public Domain）、鸟鸣和溪水（CC0），新 MP3 合计约 1.01 MiB，只有点击播放才加载。旧合成 WAV 为兼容旧页面保留。来源和许可见 [资源记录](Doc/资源来源与授权.md)；按音频 SOURCES 准备输入后运行 `npm run audio:prepare` 重建新版录音。`audio:generate` 仍仅重建旧版合成 WAV。
+## 文档与资源
 
-第五阶段实现及验证见 [共学体验与学习反馈](Doc/阶段交付_共学体验与学习反馈.md)，第四阶段恢复机制见 [交付记录](Doc/阶段交付_恢复部署与MVP.md)。已知限制：单实例、每房 8 人、每房一次 Session、支持房主主动转交与异常接任；当前 Session 最近 50 条聊天可恢复，提供个人分页历史、学习反馈和轻互动；偏好仅存当前浏览器，草稿仅保留当前标签页 24 小时且退出登录清除。异常中止最多丢失最后一段未持久化心跳之间的有效时长（通常不超过约 15 秒），采用保守统计。未实测实体低端手机、Safari/iOS 和公网 HTTPS 代理；WebGL 不可用时仍可使用座位卡片完成共学，移动端本地音频受浏览器与系统播放规则约束。这些限制不阻断当前桌面浏览器 MVP。
+- [产品需求文档 v1.1](Doc/FocusSpace_产品需求文档_PRD_v1.1.md)
+- [开发设计文档](Doc/FocusSpace_开发设计文档_v1.0.md)
+- [前后端分工说明](Doc/FocusSpace产品前后端分工说明.md)
+- [资源来源与授权](Doc/资源来源与授权.md)
 
-## Windows 一键局域网使用
+3D 家具、角色与场景由项目中的几何体程序化生成，不依赖外部模型、图片或字体。环境音来源及许可记录在资源文档与 `apps/web/public/audio/SOURCES.md` 中；Three.js 许可文本保存在 `apps/web/public/licenses/`。
 
-双击根目录 `Start-FocusSpace.cmd`。首次使用需要 Node.js 22.12+；启动器自动识别 IPv4 地址、更新 `.env` 的监听地址与允许来源、补齐依赖、执行 setup/build 并启动生产服务。首次配置防火墙时允许 Windows 管理员提示；规则仅允许本地子网访问本项目 Node 程序的服务端口，不关闭防火墙。原 `.env` 首次备份到已忽略的 `.env.local`，数据库配置及记录保留。已有 HTTPS 配置会停止并提示沿用原部署。
+---
 
-将启动窗口显示的网址发给同一 Wi-Fi / 局域网的人，各自注册登录，再通过房间码共学。保持主机开机和启动窗口运行。双击 `Stop-FocusSpace.cmd` 停止本启动器创建的服务（Windows 结束进程，重启按应用恢复机制处理）；重新启动会应用新网络地址及代码更新。若端口被开发服务占用，先在其终端 Ctrl+C。重复启动会复用健康的本项目生产服务；网络变化时提示停止后重启。
+<div align="center">
 
-此入口不提供公网地址；不同网络仍需公网部署或另行配置网络连接。校园网、访客 Wi-Fi 的设备隔离可能阻止互访。
+留一点安静，给正在努力的自己。
 
-局域网 HTTP 回归验证：先执行 `npm run build`，再执行 `npm run test:lan`。使用独立数据库及两个浏览器会话，明确验证非安全上下文中的创建、加入、实时同步、任务和共学流程，并检查握手来源拒绝规则。证据保存到 `.tmp/lan-http-*`；不写入日常数据库。
-
-## 第五阶段体验入口
-
-- 首页：保存新建房间的默认节奏、查看最近三次已结算共学；「全部历史」进入 `/history`，每页 10 条，正式累计排除 45/15 秒演示场次。
-- 房间：复制邀请链接 `/join/:code` 或继续使用房间码。未登录先登录/注册，再回到原邀请页确认加入，仍检查容量、已有房间和房间状态。
-- 我的任务：默认标题私有，可逐项公开/收回。取消完成扣减完成数，删除同时移除总数和完成数；本轮只计首次完成发生在本轮且当前仍完成的任务，重复勾选不新增次数。
-- Break：本轮有效专注、本轮完成与整场累计分别显示；最近 24 小时最多 50 条消息恢复，阅读旧消息时提示新消息。失败保留草稿并手动重试，断线不自动补发。
-- 空间：至少两人同时有效 Focus 的共同专注时长、房间总任务进度、每 10 秒一次的无声鼓励和短暂任务完成图标。
-- 个人偏好不改房间共享节奏，保存音量/视图不触发播放。任务新增/编辑及聊天草稿按账号、房间隔离，刷新保留、退出清理；浏览器禁用存储时只保留当前页面状态。
-
-定向验证：`npm run test:feedback`；旧库升级验证：`node scripts/verify-feedback-migration.mjs`（迁移验证使用 Node.js 22.13+ 的内置 SQLite；常规应用要求不变）。两者只使用各自的 `.tmp` 数据库。
-
-## 第六阶段：公共共学与管理员
-
-本地生产入口：`npm run start:local` → http://127.0.0.1:3002；保留 `.env` 数据库设置，强制仅本机访问。先注册个人账号，再执行 `npm run admin:init -- 你的账号 --confirm`，重新登录打开 `/admin`。没有默认管理员密码。
-
-首页提供公开列表、筛选与分页，新房间默认私有，旧房间保持私有；房内提供可见性、房主转交及转交后离开。后台包含概览、用户封禁/解封、房间与 Session、24 小时消息移除和审计。管理员不获得私人任务读取权。
-
-规则、管理员操作说明、接任规则和演示路线见 [第六阶段交付](Doc/阶段交付_公共共学与管理员系统.md)。验证命令：`npm run test:admin`、`npm run typecheck`、`npm run build`。
+</div>
